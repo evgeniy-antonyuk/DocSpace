@@ -14,10 +14,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract changelog for the release
+      - name: Create release_notes.md
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          awk -v v="## $VERSION" '$0 ~ v {flag=1; next} /^## [0-9]/ && flag {flag=0} flag' CHANGELOG.md > release_notes.md
+          echo "See changes at [CHANGELOG.md](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/master/CHANGELOG.md)" >> release_notes.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

@@ -1,0 +1,113 @@
+name: Release Action
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version'
+        required: true
+        default: 'v3.0.5'
+      source_docker_version:
+        description: 'Source Docker version'
+        required: true
+        default: '3.0.5.XXXX'
+      branch:
+        description: 'Release branch'
+        required: true
+        default: 'release/v3.0.5'
+      target_branch:
+        description: 'Target branch'
+        required: true
+        default: 'master'
+
+jobs:
+  release:
+    name: Release for ${{ matrix.repo }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
+    outputs:
+      failed: ${{ steps.track_failures.outputs.failed }}
+    steps:
+      - name: Checkout ${{ matrix.repo }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/${{ matrix.repo }}
+          token: ${{ secrets.GH_TOKEN }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Check branch existence in ${{ matrix.repo }}
+        run: |
+          git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || \
+            { echo "Branch ${{ github.event.inputs.branch }} does not exist in repository ${{ matrix.repo }}"; exit 1; }
+
+      - name: Create Pull Request in ${{ matrix.repo }}
+        id: create_pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          PR_URL=$(gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}")
+          echo "::notice::Pull request for ${{ matrix.repo }}: ${PR_URL}"
+          echo "PR_NUMBER=$(echo "${PR_URL}" | grep -oE '[0-9]+$')" >> $GITHUB_OUTPUT
+
+      - name: Wait for PR merge
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          PR_NUMBER=${{ steps.create_pr.outputs.PR_NUMBER }}
+          START_WAIT=$(date +%s)
+          while :; do
+            STATE=$(gh pr view ${PR_NUMBER} --json state --jq .state)
+            [ "${STATE}" = "MERGED" ] && break
+            [ "${STATE}" = "CLOSED" ] && echo "PR #${PR_NUMBER} was closed without merge, exiting with error." && exit 1
+            [ $(( $(date +%s) - START_WAIT )) -ge 3600 ] && echo "Timeout after 1 hour waiting for PR #${PR_NUMBER} to be merged." && exit 1
+            sleep 30
+          done
+
+      - name: Update submodules
+        if: ${{ matrix.repo == 'DocSpace' }}
+        run: |
+          git submodule update --remote --merge
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -am "Update submodules"
+            git push origin HEAD
+          else
+            echo "No changes in the submodules were detected."
+          fi
+
+      - name: Create Tag
+        run: |
+          TAG_NAME=${{ github.event.inputs.version }}$([ "${{ matrix.repo }}" != "DocSpace" ] && echo "-server")
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${TAG_NAME}
+          git push origin ${TAG_NAME}
+        
+      - name: Create Release
+        if: ${{ matrix.repo == 'DocSpace' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          tag_name: ${{ github.event.inputs.version }}
+          name: ${{ github.event.inputs.version }}
+          body: See changes at [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md)
+          draft: false
+          prerelease: false
+
+  trigger_docker_release:
+    runs-on: ubuntu-latest
+    needs: release
+    steps:
+      - name: Trigger workflow to release Docker
+        run: |
+          VERSION="${{ github.event.inputs.version }}"; VERSION="${VERSION#v}.1"
+          curl -X POST \
+              -u "${{ secrets.USERNAME }}:${{ secrets.DOCKER_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/106393860/dispatches" \
+              -H "Accept: application/vnd.github.everest-preview+json" \
+              --data "{\"ref\": \"${{ github.ref_name }}\", \"inputs\": {\"release_version\": \"${VERSION}\", \"source_version\": \"${{ github.event.inputs.source_docker_version }}\"}}"

@@ -50,7 +50,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           PR_URL=$(gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}")
-          echo "::notice::Pull request for ${{ matrix.repo }}: ${PR_URL}"
+          echo "## PR created for ${{ matrix.repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "[Link to PR](${PR_URL})" >> $GITHUB_STEP_SUMMARY
           echo "PR_NUMBER=$(echo "${PR_URL}" | grep -oE '[0-9]+$')" >> $GITHUB_OUTPUT
 
       - name: Wait for PR merge

@@ -6,15 +6,15 @@ on:
       version:
         description: 'Release version'
         required: true
-        default: 'v3.1.6'
+        default: 'v3.1.7'
       source_docker_version:
         description: 'Source Docker version'
         required: true
-        default: '3.1.6.XXXX'
+        default: '3.1.7.XXXX'
       branch:
         description: 'Release branch'
         required: true
-        default: 'release/v3.1.6'
+        default: 'release/v3.1.7'
       target_branch:
         description: 'Target branch'
         required: true
@@ -94,11 +94,8 @@ jobs:
           while :; do
             MERGED=0
             for REPO in ${REPOS}; do
-              PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} \
-                --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} \
-                --state all --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
-              PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') 
-              PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
+              PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state all --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
+              PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') && PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
 
               echo "PR state for $REPO: ${PR_STATE} ($PR_URL)"
 

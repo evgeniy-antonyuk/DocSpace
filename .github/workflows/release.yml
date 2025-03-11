@@ -165,7 +165,7 @@ jobs:
           prerelease: false
 
   trigger_docker_release:
-    name: Trigger workflow to release Docker
+    name: Trigger release Docker
     runs-on: ubuntu-latest
     steps:
       - run: |

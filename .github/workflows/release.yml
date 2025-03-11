@@ -41,7 +41,6 @@ jobs:
     name: Create PR for ${{ matrix.repo }}
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
         repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
     steps:
@@ -55,8 +54,7 @@ jobs:
       - name: Check branch existence
         run: |
           if ! git ls-remote --exit-code origin "${{ github.event.inputs.branch }}"; then
-            echo "::warning::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"
-            exit 1
+            echo "::error::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"
           fi
 
       - name: Create Pull Request

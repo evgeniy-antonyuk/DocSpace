@@ -38,28 +38,35 @@ jobs:
 
       - name: Check branch existence
         run: |
-          git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || { echo "Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"; exit 1; }
+          git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || { echo "::error Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"; exit 1; }
 
       - name: Create Pull Request
         id: create_pr
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}" || true
+          if git rev-list --count origin/${{ github.event.inputs.target_branch }}..origin/${{ github.event.inputs.branch }} | grep -q '^0$'; then
+            echo "::error No commits to merge in ${{ matrix.repo }}, skipping PR creation." && echo "SKIP_PR=true" >> $GITHUB_ENV
+          else
+            gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}"
+          fi
 
       - name: Auto merge Pull Request 
+        if: steps.create_pr.outputs.SKIP_PR == 'false'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          PR_NUMBER=$(timeout 60 bash -c 'until PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --base ${{ github.event.inputs.target_branch }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq ".[0].number") && [ -n "$PR_NUMBER" ]; do sleep 5; done; echo "${PR_NUMBER}"')
+          PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --base ${{ github.event.inputs.target_branch }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq ".[0].number")
           [ -n "${PR_NUMBER}" ] && MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
+          echo ${MERGEABLE_STATUS}
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
             gh pr merge ${PR_NUMBER} --merge --delete-branch
           else
-            echo "PR contains conflicts or status is undefined. The merge has not been completed. Resolve conflicts manually."
+            echo "::error PR contains conflicts or status is undefined. The merge has not been completed. Resolve conflicts manually."
           fi
 
       - name: Wait for all PR merges across repositories
+        if: steps.create_pr.outputs.SKIP_PR == 'false'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
@@ -70,8 +77,11 @@ jobs:
             for REPO in ${REPOS}; do
               PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state all --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
               PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') && PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
-              [ "${PR_STATE}" = "MERGED" ] && ((MERGED++))
+
               echo "PR state for $REPO: ${PR_STATE} ($PR_URL)"
+
+              [ "${PR_STATE}" = "MERGED" ] && ((MERGED++))
+              [ "${PR_STATE}" = "NOT_FOUND" ] && REPOS=$(echo "${REPOS}" | awk -v repo="${REPO}" '{for (i=1; i<=NF; i++) if ($i != repo) printf "%s ", $i; print ""}')
             done && printf '%.0s-' {1..48}; echo
             [ "${MERGED}" -eq "$(echo ${REPOS} | wc -w)" ] && break
             sleep 5
@@ -89,7 +99,7 @@ jobs:
             git commit -am "Update submodules"
             git push origin HEAD
           else
-            echo "No changes in the submodules were detected."
+            echo "::error No changes in the submodules were detected."
           fi
 
       - name: Create Tag

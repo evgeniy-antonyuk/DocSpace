@@ -108,10 +108,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           TAG_NAME=${{ github.event.inputs.version }}$([ "${{ matrix.repo }}" != "DocSpace" ] && echo '-server' || echo '')
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${TAG_NAME}
-          git push origin ${TAG_NAME}
+          git fetch --tags
+          if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "::warning::Tag ${TAG_NAME} already exists. Skipping tag creation."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag ${TAG_NAME}
+            git push origin ${TAG_NAME}
+          fi
         
       - name: Create Release
         if: ${{ matrix.repo == 'DocSpace' }}

@@ -54,7 +54,7 @@ jobs:
       - name: Check branch existence
         run: |
           if ! git ls-remote --exit-code origin "${{ github.event.inputs.branch }}"; then
-            echo "::error::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"
+            echo "::error::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}" && exit 1
           fi
 
       - name: Create Pull Request
@@ -87,7 +87,7 @@ jobs:
           if [ -n "${PR_NUMBER}" ]; then
             MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
           else
-            echo "::warning::Failed to get a PR number for ${{ matrix.repo }}"
+            echo "::error::Failed to get a PR number for ${{ matrix.repo }}" && exit 1
           fi
 
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then

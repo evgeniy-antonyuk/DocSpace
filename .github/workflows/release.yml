@@ -101,7 +101,8 @@ jobs:
             --json mergeable --jq '.mergeable')
 
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
-            gh pr merge "${PR_NUMBER}" --repo ${{ github.repository_owner }}/${{ matrix.repo }} --merge
+            gh pr merge "${PR_NUMBER}" --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+              -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}"--merge
           else
             echo "::warning::PR #$PR_NUMBER in ${{ matrix.repo }} is not mergeable or contains conflicts."
           fi

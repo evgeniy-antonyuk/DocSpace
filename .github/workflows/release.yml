@@ -63,8 +63,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           if [ "$(git rev-list --count origin/${{ github.event.inputs.target_branch }}..origin/${{ github.event.inputs.branch }})" -eq 0 ]; then
-            echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation"
-            echo "SKIP_PR=true" >> $GITHUB_ENV
+            echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation" && echo "SKIP_PR=true" >> $GITHUB_ENV
           elif [[ -n "$(gh pr list --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state open --json number --jq '.[0].number')" ]]; then
             echo "Pull request already exists in ${{ matrix.repo }}"
           else
@@ -73,7 +72,7 @@ jobs:
           fi
 
       - name: Auto merge Pull Request 
-        if: steps.create_pr.outputs.SKIP_PR != 'true'
+        if: ${{ env.SKIP_PR != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |

@@ -6,15 +6,15 @@ on:
       version:
         description: 'Release version'
         required: true
-        default: 'v3.1.1'
+        default: 'v3.1.2'
       source_docker_version:
         description: 'Source Docker version'
         required: true
-        default: '3.1.1.XXXX'
+        default: '3.1.2.XXXX'
       branch:
         description: 'Release branch'
         required: true
-        default: 'release/v3.1.1'
+        default: 'release/v3.1.2'
       target_branch:
         description: 'Target branch'
         required: true
@@ -109,7 +109,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          git submodule update --remote --merge
+          git pull && git submodule update --remote --merge
           if [ -n "$(git status --porcelain)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"

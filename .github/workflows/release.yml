@@ -47,21 +47,23 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "PR_URL=$(gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}")" >> $GITHUB_OUTPUT
-          echo "PR_NUMBER=$(echo "${PR_URL}" | grep -oE '[0-9]+$')" >> $GITHUB_OUTPUT
 
-      - name: Wait for PR merge
+      - name: Wait for all PR merges across repositories
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          REPOS: "DocSpace DocSpace-buildtools DocSpace-client DocSpace-server"
+          BRANCH: ${{ github.event.inputs.branch }}
         run: |
-          echo "Pull request for ${{ matrix.repo }}: ${{ steps.create_pr.outputs.PR_URL }}"
-          PR_NUMBER=${{ steps.create_pr.outputs.PR_NUMBER }}
-          START_WAIT=$(date +%s)
+          echo "Waiting for the PR merge in all repositories...."
           while :; do
-            STATE=$(gh pr view ${PR_NUMBER} --json state --jq .state)
-            [ "${STATE}" = "MERGED" ] && break
-            [ "${STATE}" = "CLOSED" ] && { echo "PR #${PR_NUMBER} was closed without merge, exiting with error."; exit 1; }
-            [ $(( $(date +%s) - START_WAIT )) -ge 3600 ] && echo "Timeout after 1 hour waiting for PR #${PR_NUMBER} to be merged." && exit 1
-            sleep 30
+            ALL_MERGED=true
+            for REPO in $REPOS; do
+              echo "Checking PR in the repository: $REPO"
+              STATE=$(gh pr list --repo ${{ github.repository_owner }}/$REPO --head "$BRANCH" --json state --jq '.[0].state // "NOT_FOUND"')
+              echo "PR state for $REPO: $STATE"
+              [ "$STATE" != "MERGED" ] && ALL_MERGED=false
+            done
+            [ "$ALL_MERGED" = false ] && echo "Not all PRs are merged yet" && sleep 30
           done
 
       - name: Update submodules

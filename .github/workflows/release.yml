@@ -135,8 +135,7 @@ jobs:
       - name: Trigger workflow to release Docker
         run: |
           VERSION="${{ github.event.inputs.version }}"; VERSION="${VERSION#v}.1"
-          curl -X POST \
-              -u "${{ secrets.USERNAME }}:${{ secrets.GH_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/106393860/dispatches" \
+          curl -X POST "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/106393860/dispatches" \
               -H "Accept: application/vnd.github.everest-preview+json" \
+              -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
               --data "{\"ref\": \"${{ github.ref_name }}\", \"inputs\": {\"release_version\": \"${VERSION}\", \"source_version\": \"${{ github.event.inputs.source_docker_version }}\"}}"

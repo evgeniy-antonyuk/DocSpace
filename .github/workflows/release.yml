@@ -170,10 +170,10 @@ jobs:
           prerelease: false
 
   trigger_docker_release:
+    name: Trigger workflow to release Docker
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger workflow to release Docker
-        run: |
+      - run: |
           DOCKER_VERSION="${{ github.event.inputs.version }}"
           DOCKER_VERSION="${DOCKER_VERSION#v}.1"
 

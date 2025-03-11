@@ -51,7 +51,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq '.[0].number')
+          timeout 60 bash -c 'until PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq '"'"'.[0].number'"'"'); [ -n "$PR_NUMBER" ] && break; sleep 10; done; echo "PR_NUMBER: $PR_NUMBER"'
           MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
             gh pr merge ${PR_NUMBER} --merge --delete-branch

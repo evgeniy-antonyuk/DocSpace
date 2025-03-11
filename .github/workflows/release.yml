@@ -34,6 +34,7 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/${{ matrix.repo }}
           token: ${{ secrets.GH_TOKEN }}
+          submodules: recursive
           fetch-depth: 0
 
       - name: Check branch existence
@@ -60,7 +61,6 @@ jobs:
         run: |
           PR_NUMBER=$(timeout 60 bash -c 'while :; do PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --base ${{ github.event.inputs.target_branch }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq ".[0].number"); [[ -n "$PR_NUMBER" && "$PR_NUMBER" != "UNKNOWN" ]] && echo $PR_NUMBER; sleep 2; exit 0; done;')
           [ -n "${PR_NUMBER}" ] && MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable') || echo "::warning::Failed to get a PR number for ${{ matrix.repo }}"
-          echo ${MERGEABLE_STATUS}
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
             gh pr merge ${PR_NUMBER} --merge --delete-branch
           else
@@ -135,7 +135,9 @@ jobs:
       - name: Trigger workflow to release Docker
         run: |
           VERSION="${{ github.event.inputs.version }}"; VERSION="${VERSION#v}.1"
-          curl -X POST "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/106393860/dispatches" \
+          WORKFLOW_ID=$(curl -s "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows" | \
+            jq '.workflows[] | select(.path == ".github/workflows/release-docspace.yaml") | .id')
+          curl -X POST "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/${WORKFLOW_ID}/dispatches" \
               -H "Accept: application/vnd.github.everest-preview+json" \
               -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
               --data "{\"ref\": \"${{ github.ref_name }}\", \"inputs\": {\"release_version\": \"${VERSION}\", \"source_version\": \"${{ github.event.inputs.source_docker_version }}\"}}"

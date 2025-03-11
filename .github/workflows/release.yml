@@ -21,6 +21,22 @@ on:
         default: 'master'
 
 jobs:
+  trigger_docker_release:
+    name: Trigger release Docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger release Docker
+        run: |
+          DOCKER_VERSION="${{ github.event.inputs.version }}"
+          DOCKER_VERSION="${DOCKER_VERSION#v}.1"
+          WORKFLOWS_JSON=$(curl -s "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows")
+          WORKFLOW_ID=$(echo "${WORKFLOWS_JSON}" | jq -r '.workflows[] | select(.path == ".github/workflows/release-docspace.yaml") | .id')
+
+          curl -X POST "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/${WORKFLOW_ID}/dispatches" \
+            -H "Accept: application/vnd.github.everest-preview+json" \
+            -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
+            --data "{\"ref\": \"${{ github.ref_name }}\", \"inputs\": {\"release_version\": \"${DOCKER_VERSION}\", \"source_version\": \"${{ github.event.inputs.source_docker_version }}\"}}"
+
   create_pr:
     name: Create PR for ${{ matrix.repo }}
     runs-on: ubuntu-latest
@@ -63,13 +79,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          PR_NUMBER=$(timeout 60 bash -c 'while :; do PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --base ${{ github.event.inputs.target_branch }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq ".[0].number"); [[ -n "$PR_NUMBER" && "$PR_NUMBER" != "UNKNOWN" ]] && echo $PR_NUMBER; sleep 2; exit 0; done;')
+          PR_NUMBER=$(timeout 60 bash -c 'while :; do 
+            NUM=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+              --base ${{ github.event.inputs.target_branch }} --head "${{ github.event.inputs.branch }}" \
+              --state open --json number --jq ".[0].number");
+            [[ -n "$NUM" && "$NUM" != "UNKNOWN" ]] && echo $NUM; sleep 2; exit 0; 
+          done;')
+
           if [ -n "${PR_NUMBER}" ]; then
             MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
           else
             echo "::warning::Failed to get a PR number for ${{ matrix.repo }}"
           fi
-          echo ${MERGEABLE_STATUS}
+
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
             gh pr merge ${PR_NUMBER} --merge
           else
@@ -94,12 +116,15 @@ jobs:
           while :; do
             MERGED=0
             for REPO in ${REPOS}; do
-              PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state all --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
-              PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') && PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
+              PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} \
+                --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} \
+                --state all --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
+              PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') 
+              PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
 
               echo "PR state for $REPO: ${PR_STATE} ($PR_URL)"
 
-              [ "${PR_STATE}" = "MERGED" ] && ((MERGED++))
+              [ "${PR_STATE}" = "MERGED" ] && MERGED=$((MERGED + 1))
               [ "${PR_STATE}" = "NOT_FOUND" ] && REPOS=$(echo "${REPOS}" | awk -v repo="${REPO}" '{for (i=1; i<=NF; i++) if ($i != repo) printf "%s ", $i; print ""}')
             done
             printf '%.0s-' {1..48}; echo
@@ -155,19 +180,3 @@ jobs:
           body: See changes at [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md)
           draft: false
           prerelease: false
-
-  trigger_docker_release:
-    name: Trigger release Docker
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger release Docker
-        run: |
-          DOCKER_VERSION="${{ github.event.inputs.version }}"
-          DOCKER_VERSION="${DOCKER_VERSION#v}.1"
-          WORKFLOWS_JSON=$(curl -s "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows")
-          WORKFLOW_ID=$(echo "${WORKFLOWS_JSON}" | jq -r '.workflows[] | select(.path == ".github/workflows/release-docspace.yaml") | .id')
-
-          curl -X POST "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/${WORKFLOW_ID}/dispatches" \
-            -H "Accept: application/vnd.github.everest-preview+json" \
-            -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
-            --data "{\"ref\": \"${{ github.ref_name }}\", \"inputs\": {\"release_version\": \"${DOCKER_VERSION}\", \"source_version\": \"${{ github.event.inputs.source_docker_version }}\"}}"

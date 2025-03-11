@@ -29,7 +29,7 @@ jobs:
       matrix:
         repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
     steps:
-      - name: Checkout ${{ matrix.repo }}
+      - name: Checkout repository ${{ matrix.repo }}
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/${{ matrix.repo }}
@@ -38,19 +38,26 @@ jobs:
 
       - name: Check branch existence
         run: |
-          git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || { echo "::warning::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"; exit 1; }
+          if ! git ls-remote --exit-code origin "${{ github.event.inputs.branch }}"; then
+            echo "::warning::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"
+            exit 1
+          fi
 
       - name: Create Pull Request
         id: create_pr
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          if git rev-list --count origin/${{ github.event.inputs.target_branch }}..origin/${{ github.event.inputs.branch }} | grep -q '^0$'; then
-            echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation" && echo "SKIP_PR=true" >> $GITHUB_ENV
-          elif [[ -n "$(gh pr list --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state open --json number --jq '.[0].number')" ]]; then
-            echo "Pull request already exists"
+          if [ "$(git rev-list --count origin/${{ github.event.inputs.target_branch }}..origin/${{ github.event.inputs.branch }})" -eq 0 ]; then
+            echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation"
+            echo "SKIP_PR=true" >> $GITHUB_ENV
+          elif gh pr list --base "${{ github.event.inputs.target_branch }}" --head "${{ github.event.inputs.branch }}" --state open --json number --jq '.[0].number' | grep -q .; then
+            echo "Pull request already exists in ${{ matrix.repo }}"
           else
-            gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}"
+            echo "Creating pull request in ${{ matrix.repo }}"
+            gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' \
+              -B "${{ github.event.inputs.target_branch }}" \
+              -H "${{ github.event.inputs.branch }}"
           fi
 
       - name: Auto merge Pull Request 
@@ -58,12 +65,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          PR_NUMBER=$(timeout 60 bash -c 'while :; do PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --base ${{ github.event.inputs.target_branch }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq ".[0].number"); [[ -n "$PR_NUMBER" && "$PR_NUMBER" != "UNKNOWN" ]] && echo $PR_NUMBER; sleep 2; exit 0; done;')
-          [ -n "${PR_NUMBER}" ] && MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable') || echo "::warning::Failed to get a PR number for ${{ matrix.repo }}"
-          if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
-            gh pr merge ${PR_NUMBER} --merge --delete-branch
+          PR_NUMBER=$(timeout 60 bash -c 'while true; do
+            PR_NUMBER=$(gh pr list --repo "${{ github.repository_owner }}/${{ matrix.repo }}" \
+              --base "${{ github.event.inputs.target_branch }}" --head "${{ github.event.inputs.branch }}" \
+              --state open --json number --jq ".[0].number")
+            if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "UNKNOWN" ]; then
+              echo $PR_NUMBER && break
+            fi
+            sleep 2
+          done')
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "::warning::Failed to retrieve PR number for ${{ matrix.repo }}"
+            exit 1
+          fi
+
+          MERGEABLE_STATUS=$(gh pr view $PR_NUMBER --repo "${{ github.repository_owner }}/${{ matrix.repo }}" --json mergeable --jq '.mergeable')
+          if [ "$MERGEABLE_STATUS" = "MERGEABLE" ]; then
+            echo "Merging PR #$PR_NUMBER in ${{ matrix.repo }}"
+            gh pr merge $PR_NUMBER --merge --delete-branch
           else
-            echo "::warning::PR contains conflicts or status is undefined."
+            echo "::warning::PR #$PR_NUMBER in ${{ matrix.repo }} is not mergeable or contains conflicts."
           fi
 
   release:
@@ -80,23 +102,25 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
         run: |
-          echo "Waiting for the PR merge in all repositories...."
+          echo "Waiting for PR merges in all repositories..."
           while :; do
             MERGED=0
             for REPO in ${REPOS}; do
-              PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state all --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
+              PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} \
+                --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} \
+                --state all --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
               PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') && PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
 
               echo "PR state for $REPO: ${PR_STATE} ($PR_URL)"
 
               [ "${PR_STATE}" = "MERGED" ] && ((MERGED++))
               [ "${PR_STATE}" = "NOT_FOUND" ] && REPOS=$(echo "${REPOS}" | awk -v repo="${REPO}" '{for (i=1; i<=NF; i++) if ($i != repo) printf "%s ", $i; print ""}')
-            done && printf '%.0s-' {1..48}; echo
+            done && echo "------------------------------------------------"
             [ "${MERGED}" -eq "$(echo ${REPOS} | wc -w)" ] && break
             sleep 5
           done
 
-      - name: Checkout ${{ matrix.repo }}
+      - name: Checkout repository ${{ matrix.repo }}
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/${{ matrix.repo }}
@@ -104,7 +128,7 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Update submodules
+      - name: Update submodules (DocSpace only)
         if: ${{ matrix.repo == 'DocSpace' }}
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -116,7 +140,7 @@ jobs:
             git commit -am "Update submodules"
             git push origin HEAD
           else
-            echo "::warning::No changes in the submodules were detected."
+            echo "::warning::No submodule changes detected."
           fi
 
       - name: Create Tag
@@ -130,18 +154,18 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag ${TAG_NAME}
-            git push origin ${TAG_NAME}
+            git tag "${TAG_NAME}"
+            git push origin "${TAG_NAME}"
           fi
-        
-      - name: Create Release
+
+      - name: Create GitHub Release (DocSpace only)
         if: ${{ matrix.repo == 'DocSpace' }}
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GH_TOKEN }}
           tag_name: ${{ github.event.inputs.version }}
           name: ${{ github.event.inputs.version }}
-          body: See changes at [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md)
+          body: "See changes at [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md)"
           draft: false
           prerelease: false
 
@@ -150,10 +174,13 @@ jobs:
     steps:
       - name: Trigger workflow to release Docker
         run: |
-          VERSION="${{ github.event.inputs.version }}"; VERSION="${VERSION#v}.1"
-          WORKFLOW_ID=$(curl -s "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows" | \
-            jq '.workflows[] | select(.path == ".github/workflows/release-docspace.yaml") | .id')
+          DOCKER_VERSION="${{ github.event.inputs.version }}"
+          DOCKER_VERSION="${DOCKER_VERSION#v}.1"
+
+          WORKFLOWS_JSON=$(curl -s "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows")
+          WORKFLOW_ID=$(echo "${WORKFLOWS_JSON}" | jq -r '.workflows[] | select(.path == ".github/workflows/release-docspace.yaml") | .id')
+
           curl -X POST "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/${WORKFLOW_ID}/dispatches" \
-              -H "Accept: application/vnd.github.everest-preview+json" \
-              -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
-              --data "{\"ref\": \"${{ github.ref_name }}\", \"inputs\": {\"release_version\": \"${VERSION}\", \"source_version\": \"${{ github.event.inputs.source_docker_version }}\"}}"
+            -H "Accept: application/vnd.github.everest-preview+json" \
+            -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
+            --data "{\"ref\": \"${{ github.ref_name }}\", \"inputs\": {\"release_version\": \"${DOCKER_VERSION}\", \"source_version\": \"${{ github.event.inputs.source_docker_version }}\"}}"

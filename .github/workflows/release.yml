@@ -21,15 +21,70 @@ on:
         default: 'master'
 
 jobs:
-  release:
-    name: Release for ${{ matrix.repo }}
+  create_pr:
+    name: Create PR for ${{ matrix.repo }}
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
         repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
     outputs:
-      failed: ${{ steps.track_failures.outputs.failed }}
+      pr_number: ${{ steps.create_pr.outputs.PR_NUMBER }}
+    steps:
+      - name: Checkout ${{ matrix.repo }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/${{ matrix.repo }}
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Check branch existence in ${{ matrix.repo }}
+        run: |
+          git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || { echo "Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"; exit 1; }
+
+      - name: Create Pull Request in ${{ matrix.repo }}
+        id: create_pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          PR_URL=$(gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}")
+          echo "::notice::${PR_URL}" && echo "PR_NUMBER=$(echo "${PR_URL}" | grep -oE '[0-9]+$')" >> $GITHUB_OUTPUT
+
+  wait_for_merge:
+    name: Wait for PR merge for ${{ matrix.repo }}
+    needs: create_pr
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
+    steps:
+      - name: Checkout ${{ matrix.repo }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/${{ matrix.repo }}
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Wait for PR merge
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          PR_NUMBER=${{ needs.create_pr.outputs.pr_number }}
+          START_WAIT=$(date +%s)
+          while :; do
+            STATE=$(gh pr view ${PR_NUMBER} --json state --jq .state)
+            [ "${STATE}" = "MERGED" ] && break
+            [ "${STATE}" = "CLOSED" ] && { echo "PR #${PR_NUMBER} was closed without merge, exiting with error."; exit 1; }
+            [ $(( $(date +%s) - START_WAIT )) -ge 3600 ] && echo "Timeout after 1 hour waiting for PR #${PR_NUMBER} to be merged." && exit 1
+            sleep 30
+          done
+
+  release:
+    name: Release ${{ matrix.repo }}
+    needs: wait_for_merge
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
     steps:
       - name: Checkout ${{ matrix.repo }}
         uses: actions/checkout@v4
@@ -38,34 +93,6 @@ jobs:
           token: ${{ secrets.GH_TOKEN }}
           submodules: recursive
           fetch-depth: 0
-
-      - name: Check branch existence in ${{ matrix.repo }}
-        run: |
-          git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || \
-            { echo "Branch ${{ github.event.inputs.branch }} does not exist in repository ${{ matrix.repo }}"; exit 1; }
-
-      - name: Create Pull Request in ${{ matrix.repo }}
-        id: create_pr
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          PR_URL=$(gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}")
-          echo "::notice::Pull request for ${{ matrix.repo }}: ${PR_URL}"
-          echo "PR_NUMBER=$(echo "${PR_URL}" | grep -oE '[0-9]+$')" >> $GITHUB_OUTPUT
-
-      - name: Wait for PR merge
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          PR_NUMBER=${{ steps.create_pr.outputs.PR_NUMBER }}
-          START_WAIT=$(date +%s)
-          while :; do
-            STATE=$(gh pr view ${PR_NUMBER} --json state --jq .state)
-            [ "${STATE}" = "MERGED" ] && break
-            [ "${STATE}" = "CLOSED" ] && echo "PR #${PR_NUMBER} was closed without merge, exiting with error." && exit 1
-            [ $(( $(date +%s) - START_WAIT )) -ge 3600 ] && echo "Timeout after 1 hour waiting for PR #${PR_NUMBER} to be merged." && exit 1
-            sleep 30
-          done
 
       - name: Update submodules
         if: ${{ matrix.repo == 'DocSpace' }}

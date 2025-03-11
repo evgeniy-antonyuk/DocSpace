@@ -54,7 +54,7 @@ jobs:
           PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq '.[0].number')
           MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
-            gh pr merge ${PR_NUMBER} --delete-branch
+            gh pr merge ${PR_NUMBER} --merge --delete-branch
           else
             echo "PR contains conflicts or status is undefined. The merge has not been completed. Resolve conflicts manually."
           fi

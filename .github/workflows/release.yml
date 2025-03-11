@@ -51,13 +51,11 @@ jobs:
           if [ "$(git rev-list --count origin/${{ github.event.inputs.target_branch }}..origin/${{ github.event.inputs.branch }})" -eq 0 ]; then
             echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation"
             echo "SKIP_PR=true" >> $GITHUB_ENV
-          elif gh pr list --base "${{ github.event.inputs.target_branch }}" --head "${{ github.event.inputs.branch }}" --state open --json number --jq '.[0].number' | grep -q .; then
+          elif [[ -n "$(gh pr list --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state open --json number --jq '.[0].number')" ]]; then
             echo "Pull request already exists in ${{ matrix.repo }}"
           else
-            echo "Creating pull request in ${{ matrix.repo }}"
             gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' \
-              -B "${{ github.event.inputs.target_branch }}" \
-              -H "${{ github.event.inputs.branch }}"
+              -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}"
           fi
 
       - name: Auto merge Pull Request 
@@ -65,16 +63,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          PR_NUMBER=$(timeout 60 bash -c 'while :; do
-            NUM=$(gh pr list --repo "${{ github.repository_owner }}/${{ matrix.repo }}" \
-              --base "${{ github.event.inputs.target_branch }}" --head "${{ github.event.inputs.branch }}" \
-              --state open --json number --jq ".[0].number")
-            [ -n "$NUM" ] && [ "$NUM" != "UNKNOWN" ] && echo $NUM && exit 0
-            sleep 2 
-          done')
-
-          [ -z "$PR_NUMBER" ] && echo "::warning::Failed to retrieve PR number for ${{ matrix.repo }}" && exit 1
-          MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
+          PR_NUMBER=$(timeout 60 bash -c 'while :; do PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --base ${{ github.event.inputs.target_branch }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq ".[0].number"); [[ -n "$PR_NUMBER" && "$PR_NUMBER" != "UNKNOWN" ]] && echo $PR_NUMBER; sleep 2; exit 0; done;')
+          if [ -n "${PR_NUMBER}" ]; then
+            MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
+          else
+            echo "::warning::Failed to get a PR number for ${{ matrix.repo }}"
+          fi
           
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
             gh pr merge ${PR_NUMBER} --merge --delete-branch
@@ -149,18 +143,18 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag "${TAG_NAME}"
-            git push origin "${TAG_NAME}"
+            git tag ${TAG_NAME}
+            git push origin ${TAG_NAME}
           fi
-
-      - name: Create GitHub Release (DocSpace only)
+        
+      - name: Create Release (DocSpace only)
         if: ${{ matrix.repo == 'DocSpace' }}
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GH_TOKEN }}
           tag_name: ${{ github.event.inputs.version }}
           name: ${{ github.event.inputs.version }}
-          body: "See changes at [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md)"
+          body: See changes at [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md)
           draft: false
           prerelease: false
 
@@ -172,7 +166,6 @@ jobs:
         run: |
           DOCKER_VERSION="${{ github.event.inputs.version }}"
           DOCKER_VERSION="${DOCKER_VERSION#v}.1"
-
           WORKFLOWS_JSON=$(curl -s "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows")
           WORKFLOW_ID=$(echo "${WORKFLOWS_JSON}" | jq -r '.workflows[] | select(.path == ".github/workflows/release-docspace.yaml") | .id')
 

@@ -168,7 +168,8 @@ jobs:
     name: Trigger release Docker
     runs-on: ubuntu-latest
     steps:
-      - run: |
+      - name: Trigger release Docker
+        run: |
           DOCKER_VERSION="${{ github.event.inputs.version }}"
           DOCKER_VERSION="${DOCKER_VERSION#v}.1"
 

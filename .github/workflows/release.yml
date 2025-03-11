@@ -52,18 +52,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           REPOS: "DocSpace DocSpace-buildtools DocSpace-client DocSpace-server"
-          BRANCH: ${{ github.event.inputs.branch }}
         run: |
           echo "Waiting for the PR merge in all repositories...."
           while :; do
             ALL_MERGED=true
             for REPO in $REPOS; do
-              echo "Checking PR in the repository: $REPO"
-              STATE=$(gh pr list --repo ${{ github.repository_owner }}/$REPO --head "$BRANCH" --json state --jq '.[0].state // "NOT_FOUND"')
+              STATE=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --json state --jq '.[0].state // "NOT_FOUND"')
               echo "PR state for $REPO: $STATE"
               [ "$STATE" != "MERGED" ] && ALL_MERGED=false
             done
-            [ "$ALL_MERGED" = false ] && echo "Not all PRs are merged yet" && sleep 30
+            [ "$ALL_MERGED" = false ] && sleep 30
           done
 
       - name: Update submodules

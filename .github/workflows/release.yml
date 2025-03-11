@@ -54,7 +54,8 @@ jobs:
           fi
 
       - name: Check commits difference
-        id: check_commits
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           AHEAD_BY=$(gh api repos/${{ github.repository_owner }}/${{ matrix.repo }}/compare/${{ github.event.inputs.target_branch }}...${{ github.event.inputs.branch }} --jq '.ahead_by')
           if [ "$AHEAD_BY" -eq 0 ]; then

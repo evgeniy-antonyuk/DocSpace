@@ -47,7 +47,7 @@ jobs:
         run: |
           if git rev-list --count origin/${{ github.event.inputs.target_branch }}..origin/${{ github.event.inputs.branch }} | grep -q '^0$'; then
             echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation" && echo "SKIP_PR=true" >> $GITHUB_ENV
-          elif [[ -n "$(gh pr list --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state open --json number --jq '.[0].number') ]]; then
+          elif [[ -n "$(gh pr list --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state open --json number --jq '.[0].number')" ]]; then
             echo "Pull request already exists"
           else
             gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}"

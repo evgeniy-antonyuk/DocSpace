@@ -54,7 +54,7 @@ jobs:
           fi
 
       - name: Auto merge Pull Request 
-        if: steps.create_pr.outputs.SKIP_PR == 'false'
+        if: steps.create_pr.outputs.SKIP_PR != 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
@@ -68,7 +68,6 @@ jobs:
           fi
 
       - name: Wait for all PR merges across repositories
-        if: steps.create_pr.outputs.SKIP_PR == 'false'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
@@ -108,7 +107,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          TAG_NAME=${{ github.event.inputs.version }}$([ "${{ matrix.repo }}" != "DocSpace" ] && echo "-server")
+          TAG_NAME=${{ github.event.inputs.version }}$([ "${{ matrix.repo }}" != "DocSpace" ] && echo '-server' || echo '')
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag ${TAG_NAME}

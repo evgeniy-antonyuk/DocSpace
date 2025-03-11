@@ -6,15 +6,15 @@ on:
       version:
         description: 'Release version'
         required: true
-        default: 'v3.0.5'
+        default: 'v3.0.6'
       source_docker_version:
         description: 'Source Docker version'
         required: true
-        default: '3.0.5.XXXX'
+        default: '3.0.6.XXXX'
       branch:
         description: 'Release branch'
         required: true
-        default: 'release/v3.0.5'
+        default: 'release/v3.0.6'
       target_branch:
         description: 'Target branch'
         required: true

@@ -46,13 +46,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          PR_URL=$(gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}")
-          echo "::notice::${PR_URL}" && echo "PR_NUMBER=$(echo "${PR_URL}" | grep -oE '[0-9]+$')" >> $GITHUB_OUTPUT
+          echo "PR_URL=$(gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}")" >> $GITHUB_OUTPUT
+          echo "PR_NUMBER=$(echo "${PR_URL}" | grep -oE '[0-9]+$')" >> $GITHUB_OUTPUT
 
       - name: Wait for PR merge
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          echo "Pull request for ${{ matrix.repo }}: ${{ steps.create_pr.outputs.PR_URL }}"
           PR_NUMBER=${{ steps.create_pr.outputs.PR_NUMBER }}
           START_WAIT=$(date +%s)
           while :; do
@@ -65,6 +66,8 @@ jobs:
 
       - name: Update submodules
         if: ${{ matrix.repo == 'DocSpace' }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           git submodule update --remote --merge
           if [ -n "$(git status --porcelain)" ]; then
@@ -77,6 +80,8 @@ jobs:
           fi
 
       - name: Create Tag
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           TAG_NAME=${{ github.event.inputs.version }}$([ "${{ matrix.repo }}" != "DocSpace" ] && echo "-server")
           git config user.name "github-actions[bot]"

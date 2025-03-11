@@ -131,7 +131,6 @@ jobs:
 
   trigger_docker_release:
     runs-on: ubuntu-latest
-    needs: release
     steps:
       - name: Trigger workflow to release Docker
         run: |

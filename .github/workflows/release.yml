@@ -20,8 +20,7 @@ on:
         required: true
         default: 'master'
 
-env:
-  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+permissions: write-all
 
 jobs:
   trigger_docker_release:
@@ -47,11 +46,6 @@ jobs:
       matrix:
         repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
     steps:
-      - name: Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
       - name: Check branch existence
         run: |
           if ! gh api repos/${{ github.repository_owner }}/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.branch }} --silent; then
@@ -120,11 +114,6 @@ jobs:
       matrix:
         repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
     steps:
-      - name: Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
       - name: Wait for all PR merges across repositories
         env:
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"

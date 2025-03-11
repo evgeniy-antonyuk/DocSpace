@@ -36,23 +36,23 @@ jobs:
           token: ${{ secrets.GH_TOKEN }}
           fetch-depth: 0
 
-      - name: Check branch existence in ${{ matrix.repo }}
+      - name: Check branch existence
         run: |
           git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || { echo "Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"; exit 1; }
 
-      - name: Create Pull Request in ${{ matrix.repo }}
+      - name: Create Pull Request
         id: create_pr
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}" || true
 
-      - name: Auto merge PR in ${{ matrix.repo }}
+      - name: Auto merge Pull Request 
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           PR_NUMBER=$(timeout 60 bash -c 'until PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --base ${{ github.event.inputs.target_branch }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq ".[0].number") && [ -n "$PR_NUMBER" ]; do sleep 5; done; echo "${PR_NUMBER}"')
-          [ -n "$PR_NUMBER" ] && MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
+          [ -n "${PR_NUMBER}" ] && MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
             gh pr merge ${PR_NUMBER} --merge --delete-branch
           else
@@ -70,11 +70,11 @@ jobs:
             for REPO in ${REPOS}; do
               PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state all --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
               PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') && PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
-              [ "${STATE}" = "MERGED" ] && ((MERGED++))
+              [ "${PR_STATE}" = "MERGED" ] && ((MERGED++))
               echo "PR state for $REPO: ${PR_STATE} ($PR_URL)"
-            done
+            done && printf '%.0s-' {1..48}; echo
             [ "${MERGED}" -eq "$(echo ${REPOS} | wc -w)" ] && break
-            sleep 30
+            sleep 5
           done
 
       - name: Update submodules

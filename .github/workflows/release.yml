@@ -6,15 +6,15 @@ on:
       version:
         description: 'Release version'
         required: true
-        default: 'v3.0.5'
+        default: 'v3.0.6'
       source_docker_version:
         description: 'Source Docker version'
         required: true
-        default: '3.0.5.XXXX'
+        default: '3.0.6.XXXX'
       branch:
         description: 'Release branch'
         required: true
-        default: 'release/v3.0.5'
+        default: 'release/v3.0.6'
       target_branch:
         description: 'Target branch'
         required: true
@@ -34,36 +34,58 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/${{ matrix.repo }}
           token: ${{ secrets.GH_TOKEN }}
-          submodules: recursive
           fetch-depth: 0
 
-      - name: Check branch existence in ${{ matrix.repo }}
+      - name: Check branch existence
         run: |
-          git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || { echo "Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"; exit 1; }
+          git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || { echo "::warning::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"; exit 1; }
 
-      - name: Create Pull Request in ${{ matrix.repo }}
+      - name: Create Pull Request
         id: create_pr
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          echo "PR_URL=$(gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}")" >> $GITHUB_OUTPUT
+          if git rev-list --count origin/${{ github.event.inputs.target_branch }}..origin/${{ github.event.inputs.branch }} | grep -q '^0$'; then
+            echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation" && echo "SKIP_PR=true" >> $GITHUB_ENV
+          elif [[ -n "$(gh pr list --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state open --json number --jq '.[0].number')" ]]; then
+            echo "Pull request already exists"
+          else
+            gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}"
+          fi
+
+      - name: Auto merge Pull Request 
+        if: steps.create_pr.outputs.SKIP_PR != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --base ${{ github.event.inputs.target_branch }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq ".[0].number")
+          [ -n "${PR_NUMBER}" ] && MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
+          echo ${MERGEABLE_STATUS}
+          if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
+            gh pr merge ${PR_NUMBER} --merge --delete-branch
+          else
+            echo "::warning::PR contains conflicts or status is undefined."
+          fi
 
       - name: Wait for all PR merges across repositories
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          REPOS: "DocSpace DocSpace-buildtools DocSpace-client DocSpace-server"
-          BRANCH: ${{ github.event.inputs.branch }}
+          REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
         run: |
           echo "Waiting for the PR merge in all repositories...."
           while :; do
-            ALL_MERGED=true
-            for REPO in $REPOS; do
-              echo "Checking PR in the repository: $REPO"
-              STATE=$(gh pr list --repo ${{ github.repository_owner }}/$REPO --head "$BRANCH" --json state --jq '.[0].state // "NOT_FOUND"')
-              echo "PR state for $REPO: $STATE"
-              [ "$STATE" != "MERGED" ] && ALL_MERGED=false
-            done
-            [ "$ALL_MERGED" = false ] && echo "Not all PRs are merged yet" && sleep 30
+            MERGED=0
+            for REPO in ${REPOS}; do
+              PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state all --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
+              PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') && PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
+
+              echo "PR state for $REPO: ${PR_STATE} ($PR_URL)"
+
+              [ "${PR_STATE}" = "MERGED" ] && ((MERGED++))
+              [ "${PR_STATE}" = "NOT_FOUND" ] && REPOS=$(echo "${REPOS}" | awk -v repo="${REPO}" '{for (i=1; i<=NF; i++) if ($i != repo) printf "%s ", $i; print ""}')
+            done && printf '%.0s-' {1..48}; echo
+            [ "${MERGED}" -eq "$(echo ${REPOS} | wc -w)" ] && break
+            sleep 5
           done
 
       - name: Update submodules
@@ -78,18 +100,23 @@ jobs:
             git commit -am "Update submodules"
             git push origin HEAD
           else
-            echo "No changes in the submodules were detected."
+            echo "::warning::No changes in the submodules were detected."
           fi
 
       - name: Create Tag
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          TAG_NAME=${{ github.event.inputs.version }}$([ "${{ matrix.repo }}" != "DocSpace" ] && echo "-server")
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${TAG_NAME}
-          git push origin ${TAG_NAME}
+          TAG_NAME=${{ github.event.inputs.version }}$([ "${{ matrix.repo }}" != "DocSpace" ] && echo '-server' || echo '')
+          git fetch --tags
+          if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "::warning::Tag ${TAG_NAME} already exists. Skipping tag creation."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag ${TAG_NAME}
+            git push origin ${TAG_NAME}
+          fi
         
       - name: Create Release
         if: ${{ matrix.repo == 'DocSpace' }}
@@ -104,7 +131,6 @@ jobs:
 
   trigger_docker_release:
     runs-on: ubuntu-latest
-    needs: release
     steps:
       - name: Trigger workflow to release Docker
         run: |

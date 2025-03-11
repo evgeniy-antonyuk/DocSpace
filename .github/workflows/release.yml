@@ -59,8 +59,8 @@ jobs:
             for REPO in ${REPOS}; do
               PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
               PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') && PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
-              [ "$STATE" = "MERGED" ] && ((MERGED++))
-              echo "PR state for $REPO: $STATE ($URL)"
+              [ "${STATE}" = "MERGED" ] && ((MERGED++))
+              echo "PR state for $REPO: ${PR_STATE} ($PR_URL)"
             done
             [ "${MERGED}" -eq "$(echo ${REPOS} | wc -w)" ] && break
             sleep 30

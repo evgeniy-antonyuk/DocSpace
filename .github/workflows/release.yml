@@ -48,6 +48,18 @@ jobs:
         run: |
           gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}" || true
 
+      - name: Auto merge PR if mergeable in ${{ matrix.repo }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq '.[0].number')
+          MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
+          if [ "${MERGEABLE_STATUS}" = "{MERGEABLE}" ]; then
+            gh pr merge ${PR_NUMBER} --squash --admin --delete-branch
+          else
+            echo "PR contains conflicts or status is undefined. The merge has not been completed. Resolve conflicts manually."
+          fi
+
       - name: Wait for all PR merges across repositories
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -57,7 +69,7 @@ jobs:
           while :; do
             MERGED=0
             for REPO in ${REPOS}; do
-              PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
+              PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state all --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
               PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') && PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
               [ "${STATE}" = "MERGED" ] && ((MERGED++))
               echo "PR state for $REPO: ${PR_STATE} ($PR_URL)"

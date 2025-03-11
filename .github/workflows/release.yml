@@ -46,22 +46,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          echo "PR_URL=$(gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}")" >> $GITHUB_OUTPUT
+          gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}"
 
       - name: Wait for all PR merges across repositories
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          REPOS: "DocSpace DocSpace-buildtools DocSpace-client DocSpace-server"
+          REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
         run: |
           echo "Waiting for the PR merge in all repositories...."
           while :; do
-            ALL_MERGED=true
-            for REPO in $REPOS; do
-              STATE=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --json state --jq '.[0].state // "NOT_FOUND"')
-              echo "PR state for $REPO: $STATE"
-              [ "$STATE" != "MERGED" ] && ALL_MERGED=false
+            MERGED=0
+            for REPO in ${REPOS}; do
+              PR_INFO=$(gh pr list --repo ${{ github.repository_owner }}/${REPO} --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --json state,url --jq '.[0] // {state: "NOT_FOUND", url: ""}')
+              PR_STATE=$(echo "${PR_INFO}" | jq -r '.state') && PR_URL=$(echo "${PR_INFO}" | jq -r '.url')
+              [ "$STATE" = "MERGED" ] && ((MERGED++))
+              echo "PR state for $REPO: $STATE ($URL)"
             done
-            [ "$ALL_MERGED" = false ] && sleep 30
+            [ "${MERGED}" -eq "$(echo ${REPOS} | wc -w)" ] && break
+            sleep 30
           done
 
       - name: Update submodules

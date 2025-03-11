@@ -150,7 +150,8 @@ jobs:
       - name: Update submodules (DocSpace only)
         if: ${{ matrix.repo == 'DocSpace' }}
         run: |
-          git pull && git submodule update --remote --merge
+          git pull
+          git submodule update --remote --merge
           if [ -n "$(git status --porcelain)" ]; then
             git commit -am "Update submodules"
             git push origin HEAD

@@ -37,60 +37,77 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
             --data "{\"ref\": \"${{ github.ref_name }}\", \"inputs\": {\"release_version\": \"${DOCKER_VERSION}\", \"source_version\": \"${{ github.event.inputs.source_docker_version }}\"}}"
 
-  create_pr:
-    name: Create PR for ${{ matrix.repo }}
+  create_and_merge_pr:
+    name: Create/merge PRs ${{ matrix.repo }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
         repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
     steps:
-      - name: Checkout repository ${{ matrix.repo }}
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/${{ matrix.repo }}
-          token: ${{ secrets.GH_TOKEN }}
-          fetch-depth: 0
-
       - name: Check branch existence
-        run: |
-          if ! git ls-remote --exit-code origin "${{ github.event.inputs.branch }}"; then
-            echo "::error::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}" && exit 1
-          fi
-
-      - name: Create Pull Request
-        id: create_pr
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          if [ "$(git rev-list --count origin/${{ github.event.inputs.target_branch }}..origin/${{ github.event.inputs.branch }})" -eq 0 ]; then
-            echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation" && echo "SKIP_PR=true" >> $GITHUB_ENV
-          elif [[ -n "$(gh pr list --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state open --json number --jq '.[0].number')" ]]; then
-            echo "Pull request already exists in ${{ matrix.repo }}"
-          else
-            gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' \
-              -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}"
+          if ! gh api repos/${{ github.repository_owner }}/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.branch }} --silent; then
+            echo "::error::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"
+            exit 1
           fi
 
-      - name: Auto merge Pull Request 
+      - name: Check commits difference
+        id: check_commits
+        run: |
+          AHEAD_BY=$(gh api repos/${{ github.repository_owner }}/${{ matrix.repo }}/compare/${{ github.event.inputs.target_branch }}...${{ github.event.inputs.branch }} --jq '.ahead_by')
+          if [ "$AHEAD_BY" -eq 0 ]; then
+            echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation"
+            echo "SKIP_PR=true" >> $GITHUB_ENV
+          fi
+
+      - name: Create Pull Request
+        if: ${{ env.SKIP_PR != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+            --base ${{ github.event.inputs.target_branch }} \
+            --head ${{ github.event.inputs.branch }} \
+            --state open \
+            --json number --jq '.[0].number')
+
+          if [[ -n "$PR_NUMBER" ]]; then
+            echo "Pull request #$PR_NUMBER already exists in ${{ matrix.repo }}"
+          else
+            gh pr create --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+              -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" \
+              -b "" \
+              -B ${{ github.event.inputs.target_branch }} \
+              -H ${{ github.event.inputs.branch }}
+          fi
+
+      - name: Auto merge Pull Request
         if: ${{ env.SKIP_PR != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           PR_NUMBER=$(timeout 60 bash -c 'while :; do 
             NUM=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-              --base ${{ github.event.inputs.target_branch }} --head "${{ github.event.inputs.branch }}" \
-              --state open --json number --jq ".[0].number");
+              --base ${{ github.event.inputs.target_branch }} \
+              --head "${{ github.event.inputs.branch }}" \
+              --state open \
+              --json number --jq ".[0].number");
             [[ -n "$NUM" && "$NUM" != "UNKNOWN" ]] && echo $NUM; sleep 2; exit 0; 
           done;')
 
-          if [ -n "${PR_NUMBER}" ]; then
-            MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
-          else
-            echo "::error::Failed to get a PR number for ${{ matrix.repo }}" && exit 1
+          if [ -z "${PR_NUMBER}" ]; then
+            echo "::error::Failed to find open PR in ${{ matrix.repo }}"
+            exit 1
           fi
 
+          MERGEABLE_STATUS=$(gh pr view "${PR_NUMBER}" \
+            --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+            --json mergeable --jq '.mergeable')
+
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
-            gh pr merge ${PR_NUMBER} --merge
+            gh pr merge "${PR_NUMBER}" --repo ${{ github.repository_owner }}/${{ matrix.repo }} --merge
           else
             echo "::warning::PR #$PR_NUMBER in ${{ matrix.repo }} is not mergeable or contains conflicts."
           fi
@@ -98,7 +115,7 @@ jobs:
   release:
     name: Release ${{ matrix.repo }}
     runs-on: ubuntu-latest
-    needs: create_pr
+    needs: create_and_merge_pr
     strategy:
       fail-fast: false
       matrix:
@@ -122,7 +139,7 @@ jobs:
               echo "PR state for $REPO: ${PR_STATE} ($PR_URL)"
 
               [ "${PR_STATE}" = "MERGED" ] && MERGED=$((MERGED + 1))
-              [ "${PR_STATE}" = "NOT_FOUND" ] && REPOS=$(echo "${REPOS}" | awk -v repo="${REPO}" '{for (i=1; i<=NF; i++) if ($i != repo) printf "%s ", $i; print ""}')
+              [ "${PR_STATE}" = "NOT_FOUND" ] && REPOS=$(xargs -n1 <<< "$REPOS" | grep -vx "$REPO" | xargs)
             done
             printf '%.0s-' {1..48}; echo
             [ "${MERGED}" -eq "$(echo ${REPOS} | wc -w)" ] && break

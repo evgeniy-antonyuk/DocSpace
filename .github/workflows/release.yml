@@ -38,7 +38,7 @@ jobs:
 
       - name: Check branch existence
         run: |
-          git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || { echo "::error Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"; exit 1; }
+          git ls-remote --exit-code origin "${{ github.event.inputs.branch }}" || { echo "::warning::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"; exit 1; }
 
       - name: Create Pull Request
         id: create_pr
@@ -46,7 +46,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           if git rev-list --count origin/${{ github.event.inputs.target_branch }}..origin/${{ github.event.inputs.branch }} | grep -q '^0$'; then
-            echo "::error No commits to merge in ${{ matrix.repo }}, skipping PR creation." && echo "SKIP_PR=true" >> $GITHUB_ENV
+            echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation" && echo "SKIP_PR=true" >> $GITHUB_ENV
+          elif -n "$(gh pr list --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} --state open --json number --jq '.[0].number'); then
+            echo "Pull request already exists"
           else
             gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}"
           fi
@@ -62,7 +64,7 @@ jobs:
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
             gh pr merge ${PR_NUMBER} --merge --delete-branch
           else
-            echo "::error PR contains conflicts or status is undefined. The merge has not been completed. Resolve conflicts manually."
+            echo "::warning::PR contains conflicts or status is undefined."
           fi
 
       - name: Wait for all PR merges across repositories
@@ -99,7 +101,7 @@ jobs:
             git commit -am "Update submodules"
             git push origin HEAD
           else
-            echo "::error No changes in the submodules were detected."
+            echo "::warning::No changes in the submodules were detected."
           fi
 
       - name: Create Tag

@@ -20,6 +20,9 @@ on:
         required: true
         default: 'master'
 
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
 jobs:
   trigger_docker_release:
     name: Trigger Docker release
@@ -45,8 +48,6 @@ jobs:
         repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
     steps:
       - name: Check branch existence
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           if ! gh api repos/${{ github.repository_owner }}/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.branch }} --silent; then
             echo "::error::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}"
@@ -54,8 +55,6 @@ jobs:
           fi
 
       - name: Check commits difference
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           AHEAD_BY=$(gh api repos/${{ github.repository_owner }}/${{ matrix.repo }}/compare/${{ github.event.inputs.target_branch }}...${{ github.event.inputs.branch }} --jq '.ahead_by')
           if [ "$AHEAD_BY" -eq 0 ]; then
@@ -65,8 +64,6 @@ jobs:
 
       - name: Create Pull Request
         if: ${{ env.SKIP_PR != 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
             --base ${{ github.event.inputs.target_branch }} \
@@ -86,8 +83,6 @@ jobs:
 
       - name: Auto merge Pull Request
         if: ${{ env.SKIP_PR != 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           PR_NUMBER=$(timeout 60 bash -c 'while :; do 
             NUM=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
@@ -124,7 +119,6 @@ jobs:
     steps:
       - name: Wait for all PR merges across repositories
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
         run: |
           echo "Waiting for PR merges in all repositories..."
@@ -157,8 +151,6 @@ jobs:
 
       - name: Update submodules (DocSpace only)
         if: ${{ matrix.repo == 'DocSpace' }}
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           git pull && git submodule update --remote --merge
           if [ -n "$(git status --porcelain)" ]; then
@@ -171,8 +163,6 @@ jobs:
           fi
 
       - name: Create Tag
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           TAG_NAME=${{ github.event.inputs.version }}$([ "${{ matrix.repo }}" != "DocSpace" ] && echo '-server' || echo '')
           git fetch --tags

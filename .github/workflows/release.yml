@@ -22,10 +22,10 @@ on:
 
 jobs:
   trigger_docker_release:
-    name: Trigger release Docker
+    name: Trigger Docker release
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger release Docker
+      - name: Trigger Docker release
         run: |
           DOCKER_VERSION="${{ github.event.inputs.version }}"
           DOCKER_VERSION="${DOCKER_VERSION#v}.1"

@@ -22,6 +22,9 @@ on:
 
 permissions: write-all
 
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   trigger_docker_release:
     name: Trigger Docker release
@@ -36,7 +39,7 @@ jobs:
 
           curl -X POST "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/${WORKFLOW_ID}/dispatches" \
             -H "Accept: application/vnd.github.everest-preview+json" \
-            -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             --data "{\"ref\": \"${{ github.ref_name }}\", \"inputs\": {\"release_version\": \"${DOCKER_VERSION}\", \"source_version\": \"${{ github.event.inputs.source_docker_version }}\"}}"
 
   create_and_merge_pr:
@@ -142,7 +145,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/${{ matrix.repo }}
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           submodules: recursive
           fetch-depth: 0
 
@@ -172,7 +175,7 @@ jobs:
         if: ${{ matrix.repo == 'DocSpace' }}
         uses: softprops/action-gh-release@v2
         with:
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.event.inputs.version }}
           name: ${{ github.event.inputs.version }}
           body: See changes at [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md)

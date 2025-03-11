@@ -34,7 +34,6 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/${{ matrix.repo }}
           token: ${{ secrets.GH_TOKEN }}
-          submodules: recursive
           fetch-depth: 0
 
       - name: Check branch existence in ${{ matrix.repo }}
@@ -48,14 +47,14 @@ jobs:
         run: |
           gh pr create -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" -b '' -B ${{ github.event.inputs.target_branch }} -H "${{ github.event.inputs.branch }}" || true
 
-      - name: Auto merge PR if mergeable in ${{ matrix.repo }}
+      - name: Auto merge PR in ${{ matrix.repo }}
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           PR_NUMBER=$(gh pr list --repo ${{ github.repository_owner }}/${{ matrix.repo }} --head "${{ github.event.inputs.branch }}" --state open --json number --jq '.[0].number')
           MERGEABLE_STATUS=$(gh pr view ${PR_NUMBER} --repo ${{ github.repository_owner }}/${{ matrix.repo }} --json mergeable --jq '.mergeable')
           if [ "${MERGEABLE_STATUS}" = "MERGEABLE" ]; then
-            gh pr merge ${PR_NUMBER} --squash --admin --delete-branch
+            gh pr merge ${PR_NUMBER} --delete-branch
           else
             echo "PR contains conflicts or status is undefined. The merge has not been completed. Resolve conflicts manually."
           fi

@@ -248,8 +248,7 @@ jobs:
 
           MESSAGE="\[${SUCCESS:-0}/$(echo $REPOS | wc -w)] "
           MESSAGE+='${{ github.event.inputs.branch }} → ${{ github.event.inputs.target_branch }}'
-          MESSAGE+="${STATUS}"
-          MESSAGE+=$'\n'$'\n''Releases: '
+          MESSAGE+="${STATUS}" MESSAGE+=$'\n'$'\n''Releases: '
           MESSAGE+='[Docker](${{ github.server_url }}/${{ github.repository }}-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) '
           MESSAGE+='| [DEB](${{ secrets.JENKINS_URL }}/job/release.deb.publish/${{ env.DEB_BUILD_NUMBER }}) '
           MESSAGE+='| [RPM](${{ secrets.JENKINS_URL }}/job/release.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) '

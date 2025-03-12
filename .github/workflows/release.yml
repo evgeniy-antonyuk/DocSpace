@@ -63,7 +63,7 @@ jobs:
         run: |
 
           curl -X POST -s -S -L -u ${{ secrets.JENKINS_TOKEN }} \
-            -d 'RELEASE_DEB_BUILD=<SpecificBuildSelector><buildNumber>${{ github.event.inputs.deb_version }}</buildNumber></SpecificBuildSelector>' \
+            -d 'RELEASE_DEB_BUILD=${{ github.event.inputs.deb_version }}' \
             ${{ secrets.JENKINS_URL }}/job/release.deb.publish/buildWithParameters
 
           echo "DEB_BUILD_NUMBER=$(curl -s -u ${{ secrets.JENKINS_TOKEN }} "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV

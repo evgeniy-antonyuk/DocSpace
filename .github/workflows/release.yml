@@ -11,11 +11,11 @@ on:
         description: 'Source Docker version'
         required: true
         default: '3.2.2.XXXX'
-      deb_version:
+      deb_build_number:
         description: 'deb package build number'
         required: true
         default: '1999'
-      rpm_version:
+      rpm_build_number:
         description: 'rpm package build number'
         required: true
         default: '999'
@@ -41,14 +41,14 @@ jobs:
           DOCKER_VERSION="${{ github.event.inputs.version }}"
           DOCKER_VERSION="${DOCKER_VERSION#v}.1"
 
-          WORKFLOW_ID=$(gh api repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows \
+          WORKFLOW_ID=$(gh api repos/${{ github.repository }}-buildtools/actions/workflows \
             --jq '.workflows[] | select(.path == ".github/workflows/release-docspace.yaml") | .id')
 
-          gh api /repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/${WORKFLOW_ID}/dispatches -X POST \
+          gh api /repos/${{ github.repository }}-buildtools/actions/workflows/${WORKFLOW_ID}/dispatches -X POST \
             -f "ref=${{ github.ref_name }}" -f "inputs[release_version]=${DOCKER_VERSION}" -f "inputs[source_version]=${{ github.event.inputs.docker_version }}"
 
           until [ -n "${DOCKER_RUN_ID}" ]; do
-            DOCKER_RUN_ID=$(gh api repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/runs \
+            DOCKER_RUN_ID=$(gh api repos/${{ github.repository }}-buildtools/actions/runs \
               --jq '.workflow_runs[] | select(.workflow_id=='"${WORKFLOW_ID}"' and (.status=="in_progress" or .status=="queued")) | .id' | head -n 1)
             sleep 5
           done
@@ -61,25 +61,14 @@ jobs:
     steps:
       - name: Trigger Packages release
         run: |
-
           curl -X POST -s -S -L -u ${{ secrets.JENKINS_TOKEN }} \
-            -d 'RELEASE_DEB_BUILD=<SpecificBuildSelector plugin="copyartifact@749.vfb_dca_a_9b_6549"><buildNumber>${{ github.event.inputs.deb_version }}</buildNumber></SpecificBuildSelector>' \
+            -d 'RELEASE_DEB_BUILD=<SpecificBuildSelector plugin="copyartifact@749.vfb_dca_a_9b_6549"><buildNumber>${{ github.event.inputs.deb_build_number }}</buildNumber></SpecificBuildSelector>' \
             ${{ secrets.JENKINS_URL }}/job/release.deb.publish/buildWithParameters
+
           sleep 10
-          echo "DEB_BUILD_NUMBER=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV
-          echo "RPM_BUILD_NUMBER=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV
 
-          # curl -X POST -s -S -L -u ${{ secrets.JENKINS_TOKEN }} \
-          #   -d 'docspace_rpm_selector=<SpecificBuildSelector plugin="copyartifact@749.vfb_dca_a_9b_6549">  <buildNumber>${{ github.event.inputs.rpm_version }}</buildNumber></SpecificBuildSelector>' \
-          #   ${{ secrets.JENKINS_URL }}/job/production.rpm.publish/buildWithParameters
-          #
-          #   RPM_BUILD_NUMBER=$(curl -s -u ${{ secrets.JENKINS_TOKEN }} "${{ secrets.JENKINS_URL }}/job/production.rpm.publish/lastBuild/api/json" | jq '.number')
-
-          # curl -X POST -s -S -L -u ${{ secrets.JENKINS_TOKEN }} \
-          #   -d 'release_deb_selector=<SpecificBuildSelector><buildNumber>${{ github.event.inputs.deb_version }}</buildNumber></SpecificBuildSelector>' \
-          #   ${{ secrets.JENKINS_URL }}/job/production.deb.publish/buildWithParameters
-          #
-          #   DEB_BUILD_NUMBER=$(curl -s -u ${{ secrets.JENKINS_TOKEN }} "${{ secrets.JENKINS_URL }}/job/production.deb.publish/lastBuild/api/json" | jq '.number')
+          echo "DEB_RELEASE_BUILD_NUMBER=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV
+          echo "RPM_RELEASE_BUILD_NUMBER=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV
 
   create_and_merge_pr:
     name: Create/merge PRs ${{ matrix.repo }}
@@ -242,18 +231,16 @@ jobs:
 
           for REPO in $REPOS; do
             [[ "${JOBS_STATUS[$REPO]:-}" == "success" ]] && SUCCESS=$((SUCCESS+1)) && EMOJI="🟢" || EMOJI="🔴"
-            STATUS+=$'\n'"${EMOJI} [${REPO}](https://github.com/${{ github.repository_owner }}/${REPO})"
+            STATUS+=$'\n'"${EMOJI} [${REPO}](${{ github.server_url }}/${{ github.repository_owner }}/${REPO})"
           done
 
           MESSAGE="\[${SUCCESS:-0}/$(echo $REPOS | wc -w)] "
           MESSAGE+='${{ github.event.inputs.branch }} → ${{ github.event.inputs.target_branch }}'
-          MESSAGE+=${STATUS}"
-          MESSAGE+=$'\n'$'\n'"Releases: "
-          MESSAGE+="[Docker](https://github.com/evgeniy-antonyuk/DocSpace-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) "
-          MESSAGE+="| [DEB](https://buildserver.onlyoffice.com/job/release.deb.publish/${{ env.DEB_BUILD_NUMBER }}) "
-          MESSAGE+="| [RPM](https://buildserver.onlyoffice.com/job/release.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) "
-          # MESSAGE+="| [DEB](https://buildserver.onlyoffice.com/job/production.deb.publish/${{ env.DEB_BUILD_NUMBER }}) "
-          # MESSAGE+="| [RPM](https://buildserver.onlyoffice.com/job/production.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) "
+          MESSAGE+="${STATUS}"
+          MESSAGE+=$'\n'$'\n''Releases: '
+          MESSAGE+='[Docker](${{ github.server_url }}/${{ github.repository }}-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) '
+          MESSAGE+='| [DEB](${{ secrets.JENKINS_URL }}/job/release.deb.publish/${{ env.DEB_RELEASE_BUILD_NUMBER }}) '
+          MESSAGE+='| [RPM](${{ secrets.JENKINS_URL }}/job/release.rpm.publish/${{ env.RPM_RELEASE_BUILD_NUMBER }}) '
 
           JSON_PAYLOAD=$(jq -n --arg CHAT_ID "${{ secrets.TELEGRAM_TO }}" --arg TEXT "$MESSAGE" \
             '{chat_id: $CHAT_ID, text: $TEXT, parse_mode: "Markdown", disable_web_page_preview: true}')

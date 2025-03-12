@@ -186,7 +186,7 @@ jobs:
           prerelease: false
 
   notify:
-    name: Notify
+    name: Notify Job Statuses
     runs-on: ubuntu-latest
     needs: [release]
     if: ${{ always() }}
@@ -201,10 +201,15 @@ jobs:
           while read -r _ REPO CONCLUSION; do JOBS_STATUS["$REPO"]="$CONCLUSION"; done <<< "$JOB_OUTPUT"
 
           for REPO in $REPOS; do
-            [[ "${JOBS_STATUS[$REPO]:-}" == "success" ]] && EMOJI="🟢" && SUCCESS=$((SUCCESS+1)) || EMOJI="🔴"
-            MESSAGE+=$'\n'"$EMOJI $REPO (https://github.com/${{ github.repository_owner }}/$REPO)"
+            [[ "${JOBS_STATUS[$REPO]:-}" == "success" ]] && SUCCESS=$((SUCCESS+1)) && EMOJI="🟢" || EMOJI="🔴"
+            STATUS+=$'\n'"- ${EMOJI} [${REPO}](https://github.com/${{ github.repository_owner }}/${REPO})"
           done
 
-          MESSAGE="Branch ${{ github.event.inputs.branch }} merged into ${{ github.event.inputs.target_branch }} [${SUCCESS:-0}/$(echo $REPOS | wc -w)] (https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) ${MESSAGE}"
+          MESSAGE='**Branch** `release/v3.2.1` merged into `master`' MESSAGE+="[${SUCCESS:-0}/$(echo $REPOS | wc -w)]"
+          MESSAGE+="[Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) ${STATUS}"
+
+          JSON_PAYLOAD=$(jq -n --arg CHAT_ID "${{ secrets.TELEGRAM_TO }}" --arg TEXT "$MESSAGE" \
+            '{chat_id: $CHAT_ID, text: $TEXT, parse_mode: "Markdown", disable_web_page_preview: true}')
+
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
-            -H "Content-Type: application/json" -d "{\"chat_id\": ${{ secrets.TELEGRAM_TO }}, \"text\": \"${MESSAGE}\", \"parse_mode\": \"Markdown\", \"disable_web_page_preview\": true}"
+            -H "Content-Type: application/json" -d "$JSON_PAYLOAD"

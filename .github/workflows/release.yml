@@ -224,12 +224,12 @@ jobs:
           prerelease: false
 
   notify:
-    name: Notify Job Statuses
+    name: Notify Release
     runs-on: ubuntu-latest
     needs: [release, trigger_docker_release, trigger_packages_release ]
     if: ${{ always() }}
     steps:
-      - name: Notify Job Statuses
+      - name: Notify Release
         env:
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
           DOCKER_RUN_ID: ${{ needs.trigger_docker_release.outputs.docker_run_id }}
@@ -249,9 +249,9 @@ jobs:
           MESSAGE="\[${SUCCESS:-0}/$(echo $REPOS | wc -w)] "
           MESSAGE+='${{ github.event.inputs.branch }} → ${{ github.event.inputs.target_branch }}'
           MESSAGE+="${STATUS}" MESSAGE+=$'\n'$'\n''Releases: '
-          MESSAGE+='[Docker](${{ github.server_url }}/${{ github.repository }}-buildtools/actions/runs/${DOCKER_RUN_ID}) '
-          MESSAGE+='| [DEB](${{ secrets.JENKINS_URL }}/job/release.deb.publish/${DEB_BUILD_NUMBER}) '
-          MESSAGE+='| [RPM](${{ secrets.JENKINS_URL }}/job/release.rpm.publish/${RPM_BUILD_NUMBER}) '
+          MESSAGE+='[Docker](${{ github.server_url }}/${{ github.repository }}-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) '
+          MESSAGE+='| [DEB](${{ secrets.JENKINS_URL }}/job/release.deb.publish/${{ env.DEB_BUILD_NUMBER }}) '
+          MESSAGE+='| [RPM](${{ secrets.JENKINS_URL }}/job/release.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) '
 
           JSON_PAYLOAD=$(jq -n --arg CHAT_ID "${{ secrets.TELEGRAM_TO }}" --arg TEXT "$MESSAGE" \
             '{chat_id: $CHAT_ID, text: $TEXT, parse_mode: "Markdown", disable_web_page_preview: true}')

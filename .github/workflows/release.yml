@@ -32,13 +32,14 @@ jobs:
         run: |
           DOCKER_VERSION="${{ github.event.inputs.version }}"
           DOCKER_VERSION="${DOCKER_VERSION#v}.1"
-          WORKFLOWS_JSON=$(curl -s "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows")
-          WORKFLOW_ID=$(echo "${WORKFLOWS_JSON}" | jq -r '.workflows[] | select(.path == ".github/workflows/release-docspace.yaml") | .id')
 
-          curl -X POST "https://api.github.com/repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/${WORKFLOW_ID}/dispatches" \
-            -H "Accept: application/vnd.github.everest-preview+json" \
-            -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
-            --data "{\"ref\": \"${{ github.ref_name }}\", \"inputs\": {\"release_version\": \"${DOCKER_VERSION}\", \"source_version\": \"${{ github.event.inputs.source_docker_version }}\"}}"
+          WORKFLOW_ID=$(gh api repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows \
+            --jq '.workflows[] | select(.path == ".github/workflows/release-docspace.yaml") | .id')
+
+          gh api repos/${{ github.repository_owner }}/DocSpace-buildtools/actions/workflows/${WORKFLOW_ID}/dispatches -X POST \
+            -f ref="${{ github.ref_name }}" \
+            -F inputs.release_version="${DOCKER_VERSION}" \
+            -F inputs.source_version="${{ github.event.inputs.source_docker_version }}"
 
   create_and_merge_pr:
     name: Create/merge PRs ${{ matrix.repo }}

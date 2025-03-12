@@ -192,12 +192,18 @@ jobs:
     if: ${{ always() }}
     steps:
       - name: Notify
+        env:
+          REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
         run: |
-          while read -r line; do
-            CONCLUSION=${line##* } NAME=${line%" $CONCLUSION"} REPO_NAME=${NAME#Release } TOTAL=$((TOTAL+1))
-            [[ $CONCLUSION == success ]] && { EMOJI="🟢"; SUCCESS=$((SUCCESS+1)); } || EMOJI="🔴"
-            LINES+=$'\n'"$EMOJI $REPO_NAME (https://github.com/${{ github.repository_owner }}/$REPO_NAME)"
-          done < <(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" \
+          JOB_OUTPUT=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" \
             --jq '.jobs[] | select(.name | startswith("Release")) | "\(.name) \(.conclusion)"')
 
-          echo "Branch ${{ github.event.inputs.branch }} merged into ${{ github.event.inputs.target_branch }} [${SUCCESS:-0}/${TOTAL:-0}]${LINES}"
+          while read -r _ REPO CONCLUSION; do JOBS_STATUS["$REPO"]="$CONCLUSION"; done <<< "$JOB_OUTPUT"
+
+          for REPO in $REPOS; do
+              [[ "${JOBS_STATUS[$REPO]:-}" == "success" ]] && EMOJI="🟢" && SUCCESS=$((SUCCESS+1)) || EMOJI="🔴"
+              LINES+=$'\n'"$EMOJI $REPO (https://github.com/${{ github.repository_owner }}/$REPO)"
+          done
+
+          echo "Branch ${{ github.event.inputs.branch }} merged into ${{ github.event.inputs.target_branch }} [${SUCCESS:-0}/$(echo $REPOS | wc -w)] \
+            (https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) ${LINES}"

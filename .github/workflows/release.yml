@@ -11,7 +11,7 @@ on:
         description: 'Source Docker version'
         required: true
         default: '3.2.2.XXXX'
-      deb_build:
+      deb_version:
         description: 'deb package build number'
         required: true
         default: '1999'
@@ -63,7 +63,7 @@ jobs:
         run: |
 
           curl -X POST -s -S -L -u ${{ secrets.JENKINS_TOKEN }} \
-            -d 'RELEASE_DEB_BUILD=${{ github.event.inputs.deb_version }}' \
+            -d 'RELEASE_DEB_BUILD=<SpecificBuildSelector plugin="copyartifact@749.vfb_dca_a_9b_6549">  <buildNumber>${{ github.event.inputs.deb_version }}</buildNumber></SpecificBuildSelector>' \
             ${{ secrets.JENKINS_URL }}/job/release.deb.publish/buildWithParameters
           [ $? -ne 0 ] && echo "::error:: Failed to start DEB build" && exit 1
 
@@ -73,7 +73,7 @@ jobs:
           [ $? -ne 0 ] && echo "::error:: Failed to get RPM build number" && exit 1
 
           # curl -X POST -s -S -L -u ${{ secrets.JENKINS_TOKEN }} \
-          #   -d 'docspace_rpm_selector=<SpecificBuildSelector><buildNumber>${{ github.event.inputs.rpm_version }}</buildNumber></SpecificBuildSelector>' \
+          #   -d 'docspace_rpm_selector=<SpecificBuildSelector plugin="copyartifact@749.vfb_dca_a_9b_6549">  <buildNumber>${{ github.event.inputs.rpm_version }}</buildNumber></SpecificBuildSelector>' \
           #   ${{ secrets.JENKINS_URL }}/job/production.rpm.publish/buildWithParameters
           #
           #   RPM_BUILD_NUMBER=$(curl -s -u ${{ secrets.JENKINS_TOKEN }} "${{ secrets.JENKINS_URL }}/job/production.rpm.publish/lastBuild/api/json" | jq '.number')

@@ -57,7 +57,7 @@ jobs:
       - name: Check commits difference
         run: |
           AHEAD_BY=$(gh api repos/${{ github.repository_owner }}/${{ matrix.repo }}/compare/${{ github.event.inputs.target_branch }}...${{ github.event.inputs.branch }} --jq '.ahead_by')
-          if [ "$AHEAD_BY" -eq 0 ]; then
+          if [[ "$AHEAD_BY" =~ ^[0-9]+$ ]] && [ "$AHEAD_BY" -eq 0 ]; then
             echo "::warning::No commits to merge in ${{ matrix.repo }}, skipping PR creation"
             echo "SKIP_PR=true" >> $GITHUB_ENV
           fi
@@ -76,7 +76,7 @@ jobs:
           else
             gh pr create --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
               -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" \
-              -b "" \
+              -b "Automatically created by Release Action" \
               -B ${{ github.event.inputs.target_branch }} \
               -H ${{ github.event.inputs.branch }}
           fi

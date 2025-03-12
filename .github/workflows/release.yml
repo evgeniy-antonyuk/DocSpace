@@ -202,7 +202,7 @@ jobs:
 
           for REPO in $REPOS; do
             [[ "${JOBS_STATUS[$REPO]:-}" == "success" ]] && SUCCESS=$((SUCCESS+1)) && EMOJI="🟢" || EMOJI="🔴"
-            STATUS+=$'\n'"- ${EMOJI} [${REPO}](https://github.com/${{ github.repository_owner }}/${REPO})"
+            STATUS+=$'\n'"${EMOJI} [${REPO}](https://github.com/${{ github.repository_owner }}/${REPO})"
           done
 
           MESSAGE='**Branch** `${{ github.event.inputs.branch }}` merged into `${{ github.event.inputs.target_branch }}` '

@@ -35,8 +35,11 @@ jobs:
   trigger_docker_release:
     name: Trigger Docker release
     runs-on: ubuntu-latest
+    outputs:
+      docker_run_id: ${{ steps.docker_release.outputs.docker_run_id }}
     steps:
       - name: Trigger Docker release
+        id: docker_release
         run: |
           DOCKER_VERSION="${{ github.event.inputs.version }}"
           DOCKER_VERSION="${DOCKER_VERSION#v}.1"
@@ -53,13 +56,17 @@ jobs:
             sleep 5
           done
 
-          echo "DOCKER_RUN_ID=${DOCKER_RUN_ID}" >> $GITHUB_ENV
+          echo "docker_run_id=${DOCKER_RUN_ID}" >> $GITHUB_OUTPUT
 
   trigger_packages_release:
     name: Trigger Packages release
     runs-on: ubuntu-latest
+    outputs:
+      deb_build_number: ${{ steps.package_release.outputs.deb_build_number }}
+      rpm_build_number: ${{ steps.package_release.outputs.rpm_build_number }}
     steps:
       - name: Trigger Packages release
+        id: package_release
         run: |
           curl -X POST -s -S -L -u ${{ secrets.JENKINS_TOKEN }} \
             -d 'RELEASE_DEB_BUILD=<SpecificBuildSelector plugin="copyartifact@749.vfb_dca_a_9b_6549"><buildNumber>${{ github.event.inputs.deb_build_number }}</buildNumber></SpecificBuildSelector>' \
@@ -67,8 +74,10 @@ jobs:
 
           sleep 10
 
-          echo "DEB_RELEASE_BUILD_NUMBER=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV
-          echo "RPM_RELEASE_BUILD_NUMBER=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV
+          echo "deb_build_number=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" \
+            "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_OUTPUT
+          echo "rpm_build_number=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" \
+            "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_OUTPUT
 
   create_and_merge_pr:
     name: Create/merge PRs ${{ matrix.repo }}
@@ -223,6 +232,9 @@ jobs:
       - name: Notify Job Statuses
         env:
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
+          DOCKER_RUN_ID: ${{ needs.docker_release.outputs.run_id }}
+          DEB_BUILD_NUMBER: ${{ needs.package_release.outputs.deb_build_number }}
+          RPM_BUILD_NUMBER: ${{ needs.package_release.outputs.rpm_build_number }}
         run: |
           JOB_OUTPUT=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" \
             --jq '.jobs[] | select(.name | startswith("Release")) | "\(.name) \(.conclusion)"')
@@ -239,8 +251,8 @@ jobs:
           MESSAGE+="${STATUS}"
           MESSAGE+=$'\n'$'\n''Releases: '
           MESSAGE+='[Docker](${{ github.server_url }}/${{ github.repository }}-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) '
-          MESSAGE+='| [DEB](${{ secrets.JENKINS_URL }}/job/release.deb.publish/${{ env.DEB_RELEASE_BUILD_NUMBER }}) '
-          MESSAGE+='| [RPM](${{ secrets.JENKINS_URL }}/job/release.rpm.publish/${{ env.RPM_RELEASE_BUILD_NUMBER }}) '
+          MESSAGE+='| [DEB](${{ secrets.JENKINS_URL }}/job/release.deb.publish/${{ env.DEB_BUILD_NUMBER }}) '
+          MESSAGE+='| [RPM](${{ secrets.JENKINS_URL }}/job/release.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) '
 
           JSON_PAYLOAD=$(jq -n --arg CHAT_ID "${{ secrets.TELEGRAM_TO }}" --arg TEXT "$MESSAGE" \
             '{chat_id: $CHAT_ID, text: $TEXT, parse_mode: "Markdown", disable_web_page_preview: true}')

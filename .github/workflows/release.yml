@@ -205,8 +205,8 @@ jobs:
             STATUS+=$'\n'"- ${EMOJI} [${REPO}](https://github.com/${{ github.repository_owner }}/${REPO})"
           done
 
-          MESSAGE='**Branch** `release/v3.2.1` merged into `master`' MESSAGE+="[${SUCCESS:-0}/$(echo $REPOS | wc -w)]"
-          MESSAGE+="[Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) ${STATUS}"
+          MESSAGE='**Branch** `release/v3.2.1` merged into `master` ' MESSAGE+="\u005B${SUCCESS:-0}/$(echo $REPOS | wc -w)\u005D "
+          MESSAGE+="[\u005BDetails\u005D](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) ${STATUS}"
 
           JSON_PAYLOAD=$(jq -n --arg CHAT_ID "${{ secrets.TELEGRAM_TO }}" --arg TEXT "$MESSAGE" \
             '{chat_id: $CHAT_ID, text: $TEXT, parse_mode: "Markdown", disable_web_page_preview: true}')

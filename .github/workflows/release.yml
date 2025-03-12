@@ -191,8 +191,7 @@ jobs:
     needs: [release]
     if: ${{ always() }}
     steps:
-      - name: Collect Release Job Statuses
-        id: collect_statuses
+      - name: Notify Job Statuses
         env:
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
         run: |
@@ -202,16 +201,10 @@ jobs:
           while read -r _ REPO CONCLUSION; do JOBS_STATUS["$REPO"]="$CONCLUSION"; done <<< "$JOB_OUTPUT"
 
           for REPO in $REPOS; do
-              [[ "${JOBS_STATUS[$REPO]:-}" == "success" ]] && EMOJI="🟢" && SUCCESS=$((SUCCESS+1)) || EMOJI="🔴"
-              MESSAGE+=$'\n'"$EMOJI $REPO (https://github.com/${{ github.repository_owner }}/$REPO)"
+            [[ "${JOBS_STATUS[$REPO]:-}" == "success" ]] && EMOJI="🟢" && SUCCESS=$((SUCCESS+1)) || EMOJI="🔴"
+            MESSAGE+=$'\n'"$EMOJI $REPO (https://github.com/${{ github.repository_owner }}/$REPO)"
           done
 
           MESSAGE="Branch ${{ github.event.inputs.branch }} merged into ${{ github.event.inputs.target_branch }} [${SUCCESS:-0}/$(echo $REPOS | wc -w)] (https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) ${MESSAGE}"
-          echo "::set-output name=message::$MESSAGE"
-
-      - name: Send Telegram Notify
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: ${{ steps.collect_statuses.outputs.message }}
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+            -H "Content-Type: application/json" -d "{\"chat_id\": ${{ secrets.TELEGRAM_TO }}, \"text\": \"${MESSAGE}\", \"parse_mode\": \"Markdown\", \"disable_web_page_preview\": true}"

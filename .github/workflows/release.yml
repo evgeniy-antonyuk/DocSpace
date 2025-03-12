@@ -252,7 +252,7 @@ jobs:
           MESSAGE+='${{ github.event.inputs.branch }} → ${{ github.event.inputs.target_branch }}'
           MESSAGE+=${STATUS}"
           MESSAGE+=$'\n'$'\n'"Releases: "
-          MESSAGE+=[Docker](https://github.com/evgeniy-antonyuk/DocSpace-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) "
+          MESSAGE+="[Docker](https://github.com/evgeniy-antonyuk/DocSpace-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) "
           MESSAGE+="| [DEB](https://buildserver.onlyoffice.com/job/release.deb.publish/${{ env.DEB_BUILD_NUMBER }}) "
           MESSAGE+="| [RPM](https://buildserver.onlyoffice.com/job/release.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) "
           # MESSAGE+="| [DEB](https://buildserver.onlyoffice.com/job/production.deb.publish/${{ env.DEB_BUILD_NUMBER }}) "

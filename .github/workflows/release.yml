@@ -63,14 +63,11 @@ jobs:
         run: |
 
           curl -X POST -s -S -L -u ${{ secrets.JENKINS_TOKEN }} \
-            -d 'RELEASE_DEB_BUILD=<SpecificBuildSelector plugin="copyartifact@749.vfb_dca_a_9b_6549">  <buildNumber>${{ github.event.inputs.deb_version }}</buildNumber></SpecificBuildSelector>' \
+            -d 'RELEASE_DEB_BUILD=<SpecificBuildSelector plugin="copyartifact@749.vfb_dca_a_9b_6549"><buildNumber>${{ github.event.inputs.deb_version }}</buildNumber></SpecificBuildSelector>' \
             ${{ secrets.JENKINS_URL }}/job/release.deb.publish/buildWithParameters
-          [ $? -ne 0 ] && echo "::error:: Failed to start DEB build" && exit 1
-
-          echo "DEB_BUILD_NUMBER=$(curl -s -u ${{ secrets.JENKINS_TOKEN }} "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV
-          [ $? -ne 0 ] && echo "::error:: Failed to get DEB build number" && exit 1
-          echo "RPM_BUILD_NUMBER=$(curl -s -u ${{ secrets.JENKINS_TOKEN }} "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV
-          [ $? -ne 0 ] && echo "::error:: Failed to get RPM build number" && exit 1
+          sleep 10
+          echo "DEB_BUILD_NUMBER=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV
+          echo "RPM_BUILD_NUMBER=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_ENV
 
           # curl -X POST -s -S -L -u ${{ secrets.JENKINS_TOKEN }} \
           #   -d 'docspace_rpm_selector=<SpecificBuildSelector plugin="copyartifact@749.vfb_dca_a_9b_6549">  <buildNumber>${{ github.event.inputs.rpm_version }}</buildNumber></SpecificBuildSelector>' \

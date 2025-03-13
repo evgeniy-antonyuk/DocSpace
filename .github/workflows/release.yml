@@ -275,11 +275,11 @@ jobs:
           if ${{ github.event.inputs.trigger_docker_release == 'true' }} || ${{ github.event.inputs.trigger_packages_release == 'true' }}; then
             MESSAGE+=$'\n'$'\n''Releases: '
             if ${{ github.event.inputs.trigger_docker_release == 'true' }}; then
-              MESSAGE+='[Docker](${{ github.server_url }}/${{ github.repository }}-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) |'
+              MESSAGE+='[Docker](${{ github.server_url }}/${{ github.repository }}-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) | '
             fi
             if ${{ github.event.inputs.trigger_packages_release == 'true' }}; then
-              MESSAGE+='[DEB](${{ secrets.JENKINS_URL }}/job/production.deb.publish/${{ env.DEB_BUILD_NUMBER }}) |'
-              MESSAGE+='[RPM](${{ secrets.JENKINS_URL }}/job/production.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) |'
+              MESSAGE+='[DEB](${{ secrets.JENKINS_URL }}/job/production.deb.publish/${{ env.DEB_BUILD_NUMBER }}) | '
+              MESSAGE+='[RPM](${{ secrets.JENKINS_URL }}/job/production.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) | '
               MESSAGE+='[EXE](${{ secrets.JENKINS_URL }}/job/production.exe.publish/${{ env.EXE_BUILD_NUMBER }})'
             fi
           fi

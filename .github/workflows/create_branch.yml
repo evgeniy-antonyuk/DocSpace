@@ -52,5 +52,8 @@ jobs:
           SUCCESS=$(jq '[.jobs[] | select(.conclusion=="success")] | length' <<< "$JSON")
 
           echo "[$SUCCESS/$TOTAL] Created branch ${{ github.event.inputs.branch }} from ${{ github.event.inputs.source_branch }}"
-          jq -r '.jobs[] |(.name | sub("^Сreate branch in ";"")) as $REPO | (.conclusion | if .=="success" then "🟢" else "🔴" end) \
-              + " " + $REPO + " (${{ github.server_url }}" + "/" + "${{ github.repository_owner }}" + "/" + $REPO + ")"' <<< "$JSON"
+          jq -r --arg OWNER "${{ github.repository_owner }}" --arg GIT_URL "${{ github.server_url }}"'
+            .jobs[] | (.name | sub("^Сreate branch in ";"")) as $REPO
+            | (.conclusion | if .=="success" then "🟢" else "🔴" end)
+            + " " + $REPO + " ($GIT_URL" + "/" + $OWNER + "/" + $REPO + ")"
+          ' <<< "$JSON"

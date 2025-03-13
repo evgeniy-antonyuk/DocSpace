@@ -84,12 +84,7 @@ jobs:
           declare -A NUM=([deb]="${{ github.event.inputs.deb_build_number }}" [rpm]="${{ github.event.inputs.rpm_build_number }}")
 
           for TYPE in deb rpm; do
-            BUILD_NUM=${NUM[${TYPE}]}
-            curl -s -S -X POST -H "Content-Length: 0" -u "${TOKEN}" "${JENKINS_URL}/job/appserver.${TYPE}/$BUILD_NUM/toggleLogKeep"
-            curl -s -S -X POST -u "${TOKEN}" -d "description=${VERSION}.${BUILD_NUM}" "${JENKINS_URL}/job/appserver.${TYPE}/$BUILD_NUM/submitDescription"
-            curl -s -S -X POST -H "Content-Length: 0" -u "${TOKEN}" "${JENKINS_URL}/job/production.${TYPE}.publish/buildWithParameters"
-            sleep 10
-            echo "${TYPE}_build_number=$(curl -s -S -L -u "${TOKEN}" "${JENKINS_URL}/job/production.${TYPE}.publish/lastBuild/api/json" | jq '.number')" >> "$GITHUB_OUTPUT"
+            echo "${TYPE}_build_number=1999" >> "$GITHUB_OUTPUT"
           done
 
   create_and_merge_pr:

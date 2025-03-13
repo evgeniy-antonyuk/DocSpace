@@ -26,11 +26,11 @@ jobs:
     steps:
       - name: Сreate branch in ${{ matrix.repo }}
         run: |
-          SOURCE_HASH=$(gh api /repos/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.source_branch }} --jq '.object.sha' 2>/dev/null || true)
+          SOURCE_HASH=$(gh api /repos/${{ github.repository_owner }}/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.source_branch }} --jq '.object.sha' 2>/dev/null || true)
           [ -z "$SOURCE_HASH" ] && { echo "::error:: Source branch '${{ github.event.inputs.source_branch }}' not found"; exit 1; }
 
-          if ! gh api /repos/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.branch }} >/dev/null 2>&1; then
-            if gh api --method POST /repos/${{ matrix.repo }}/git/refs -f ref="refs/heads/${{ github.event.inputs.branch }}" -f sha="${SOURCE_HASH}"; then
+          if ! gh api /repos/${{ github.repository_owner }}/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.branch }} >/dev/null 2>&1; then
+            if gh api --method POST /repos/${{ github.repository_owner }}/${{ matrix.repo }}/git/refs -f ref="refs/heads/${{ github.event.inputs.branch }}" -f sha="${SOURCE_HASH}"; then
               echo "Branch '${{ github.event.inputs.branch }}' created successfully."
             else
               echo "::error:: Error occurred while creating branch '${{ github.event.inputs.branch }}'." && exit 1

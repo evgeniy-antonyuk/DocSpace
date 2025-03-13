@@ -17,6 +17,7 @@ env:
 
 jobs:
   create_branch:
+    name: Сreate branch in ${{ matrix.repo }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -29,7 +30,7 @@ jobs:
           [ -z "$SOURCE_HASH" ] && { echo "::error:: Source branch '${{ github.event.inputs.source_branch }}' not found"; exit 1; }
 
           if ! gh api /repos/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.branch }} >/dev/null 2>&1; then
-            if gh api --method POST /repos/${{ matrix.repo }}/git/refs -f ref="refs/heads/${{ github.event.inputs.branch }}" -f sha="$SOURCE_HASH"; then
+            if gh api --method POST /repos/${{ matrix.repo }}/git/refs -f ref="refs/heads/${{ github.event.inputs.branch }}" -f sha="${SOURCE_HASH}"; then
               echo "Branch '${{ github.event.inputs.branch }}' created successfully."
             else
               echo "::error:: Error occurred while creating branch '${{ github.event.inputs.branch }}'." && exit 1

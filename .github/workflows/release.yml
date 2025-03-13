@@ -260,10 +260,10 @@ jobs:
         run: |
           TARGET=$([ "${{ github.event.inputs.trigger_release }}" = "true" ] && echo "Release" || echo "Create/merge PR")
           JQ_FILTER=".jobs[] | select(.name | startswith(\"${TARGET}\")) | \"\\(.name | sub(\"^${TARGET}s? ?\"; \"\")) \\(.conclusion)\""
-          JOB_OUTPUT=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" --jq "$JQ_FILTER")
+          JOB_OUTPUT=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" --jq "${JQ_FILTER}")
 
-          for REPO in "${REPOS}"; do
-            [[ "${JOB_OUTPUT}" =~ "${REPO} success" ]]; SUCCESS=$((SUCCESS+1)) && EMOJI="🟢" || EMOJI="🔴"
+          for REPO in ${REPOS}; do
+            [[ "${JOB_OUTPUT}" =~ "${REPO} success" ]] && SUCCESS=$((SUCCESS+1)) && EMOJI="🟢" || EMOJI="🔴"
             STATUS+=$'\n'"${EMOJI} [${REPO}](${{ github.server_url }}/${{ github.repository_owner }}/${REPO})"
           done
 

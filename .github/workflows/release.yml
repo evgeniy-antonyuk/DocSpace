@@ -100,6 +100,7 @@ jobs:
   create_and_merge_pr:
     name: Create/merge PRs ${{ matrix.repo }}
     runs-on: ubuntu-latest
+    fail-fast: false
     strategy:
       matrix:
         repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]

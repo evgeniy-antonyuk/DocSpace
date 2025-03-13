@@ -25,7 +25,7 @@ jobs:
     steps:
       - name: Сreate branch in ${{ matrix.repo }}
         run: |
-          SOURCE_HASH=$(gh api /repos/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.source_branch }} --jq '.object.sha' 2>/dev/null)
+          SOURCE_HASH=$(gh api /repos/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.source_branch }} --jq '.object.sha' 2>/dev/null || true)
           [ -z "$SOURCE_HASH" ] && { echo "::error:: Source branch '${{ github.event.inputs.source_branch }}' not found"; exit 1; }
 
           if ! gh api /repos/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.branch }} >/dev/null 2>&1; then

@@ -47,15 +47,15 @@ jobs:
     steps:
       - name: Notify Create branch
         run: |
-          JSON=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs")
-          TOTAL=$(jq '.jobs | length' <<< "$JSON")
-          SUCCESS=$(jq '[.jobs[] | select(.conclusion=="success")] | length' <<< "$JSON")
+          JOB_OUTPUT=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs")
+          TOTAL=$(jq '[.jobs[] | select(.name | test("^Create branch in "))] | length' <<< "${JOB_OUTPUT}")
+          SUCCESS=$(jq '[.jobs[] | select((.name | test("^Create branch in ")) and (.conclusion=="success"))] | length' <<< "${JOB_OUTPUT}")
 
-          echo "[$SUCCESS/$TOTAL] Created branch ${{ github.event.inputs.branch }} from ${{ github.event.inputs.source_branch }}"
+          echo "[${SUCCESS}/${TOTAL}] Created branch ${{ github.event.inputs.branch }} from ${{ github.event.inputs.source_branch }}"
           jq -r --arg OWNER "${{ github.repository_owner }}" --arg GIT_URL "${{ github.server_url }}" '
             .jobs[]
             | select(.name | test("^Create branch in "))
             | (.name | sub("^Create branch in ";"")) as $REPO
             | (.conclusion | if .=="success" then "🟢" else "🔴" end)
               + " " + $REPO + " (" + $GIT_URL + "/" + $OWNER + "/" + $REPO + ")"
-          ' <<< "$JSON"
+          ' <<< "${JOB_OUTPUT}"

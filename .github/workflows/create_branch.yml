@@ -1,0 +1,39 @@
+name: Create Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch name to create'
+        required: true
+        default: 'release/vX.X.X'
+      source_branch:
+        description: 'Source branch'
+        required: false
+        default: 'develop'
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+jobs:
+  create_branch:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: [ 'DocSpace', 'DocSpace-buildtools', 'DocSpace-client', 'DocSpace-server' ]
+    steps:
+      - name: Сreate branch in ${{ matrix.repo }}
+        run: |
+          SOURCE_HASH=$(gh api /repos/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.source_branch }} --jq '.object.sha' 2>/dev/null)
+          [ -z "$SOURCE_HASH" ] && { echo "::error:: Source branch '${{ github.event.inputs.source_branch }}' not found"; exit 1; }
+
+          if ! gh api /repos/${{ matrix.repo }}/git/ref/heads/${{ github.event.inputs.branch }} >/dev/null 2>&1; then
+            if gh api --method POST /repos/${{ matrix.repo }}/git/refs -f ref="refs/heads/${{ github.event.inputs.branch }}" -f sha="$SOURCE_HASH"; then
+              echo "Branch '${{ github.event.inputs.branch }}' created successfully."
+            else
+              echo "::error:: Error occurred while creating branch '${{ github.event.inputs.branch }}'." && exit 1
+            fi
+          else
+            echo "::warning:: Target branch '${{ github.event.inputs.branch }}' already exists, skipping creation."
+          fi

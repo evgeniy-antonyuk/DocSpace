@@ -51,11 +51,14 @@ jobs:
           TOTAL=$(jq '[.jobs[] | select(.name | test("^Create branch in "))] | length' <<< "${JOB_OUTPUT}")
           SUCCESS=$(jq '[.jobs[] | select((.name | test("^Create branch in ")) and (.conclusion=="success"))] | length' <<< "${JOB_OUTPUT}")
 
-          echo "[${SUCCESS}/${TOTAL}] Created branch ${{ github.event.inputs.branch }} from ${{ github.event.inputs.source_branch }}"
-          jq -r --arg OWNER "${{ github.repository_owner }}" --arg GIT_URL "${{ github.server_url }}" '
+          MESSAGE="[${SUCCESS}/${TOTAL}] Created branch ${{ github.event.inputs.branch }} from ${{ github.event.inputs.source_branch }}\n"
+          MESSAGE+=$(jq -r --arg OWNER "${{ github.repository_owner }}" --arg GIT_URL "${{ github.server_url }}" '
             .jobs[]
             | select(.name | test("^Create branch in "))
             | (.name | sub("^Create branch in ";"")) as $REPO
             | (.conclusion | if .=="success" then "🟢" else "🔴" end)
               + " " + $REPO + " (" + $GIT_URL + "/" + $OWNER + "/" + $REPO + ")"
-          ' <<< "${JOB_OUTPUT}"
+          ' <<< "${JOB_OUTPUT}")
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+              -d chat_id="${{ secrets.TELEGRAM_TO }}" -d text="${MESSAGE}"

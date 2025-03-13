@@ -6,18 +6,18 @@ on:
       branch:
         description: 'Branch name to create'
         required: true
-        default: 'release/vX.X.X'
+        default: 'release/v3.3.3'
       source_branch:
         description: 'Source branch'
         required: false
-        default: 'develop'
+        default: 'master'
 
 env:
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
 jobs:
   create_branch:
-    name: Сreate branch in ${{ matrix.repo }}
+    name: Create branch in ${{ matrix.repo }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

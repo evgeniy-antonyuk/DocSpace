@@ -3,6 +3,10 @@ name: Release Action
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Release version'
+        required: true
+        default: 'vX.X.X'
       branch:
         description: 'Release branch'
         required: true
@@ -13,13 +17,9 @@ on:
         default: 'master'
       trigger_release:
         type: boolean
-        description: 'DocSpace Release'
+        description: 'GitHub Release'
         required: true
         default: true
-      version:
-        description: 'Release version'
-        required: true
-        default: 'vX.X.X'
       trigger_docker_release:
         type: boolean
         description: 'Docker images release'

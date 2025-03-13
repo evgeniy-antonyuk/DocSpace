@@ -15,6 +15,11 @@ on:
         description: 'Target branch'
         required: true
         default: 'master'
+      trigger_release:
+        type: boolean
+        description: 'GitHub Release'
+        required: true
+        default: true
       trigger_docker_release:
         type: boolean
         description: 'Docker images release'
@@ -37,6 +42,10 @@ on:
         description: 'rpm package build number'
         required: true
         default: 'XXX'
+      exe_build_number:
+        description: 'exe package build number'
+        required: true
+        default: 'XXXX'
 
 env:
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -76,14 +85,15 @@ jobs:
     outputs:
       deb_build_number: ${{ steps.package_release.outputs.deb_build_number }}
       rpm_build_number: ${{ steps.package_release.outputs.rpm_build_number }}
+      exe_build_number: ${{ steps.package_release.outputs.exe_build_number }}
     steps:
       - name: Trigger Packages release
         id: package_release
         run: |
           JENKINS_URL="${{ secrets.JENKINS_URL }}"; TOKEN="${{ secrets.JENKINS_TOKEN }}"; VERSION="${{ github.event.inputs.version }}"
-          declare -A NUM=([deb]="${{ github.event.inputs.deb_build_number }}" [rpm]="${{ github.event.inputs.rpm_build_number }}")
+          declare -A NUM=([deb]="${{ github.event.inputs.deb_build_number }}" [rpm]="${{ github.event.inputs.rpm_build_number }} [exe]="${{ github.event.inputs.exe_build_number }}")
 
-          for TYPE in deb rpm; do
+          for TYPE in deb rpm exe; do
             echo "${TYPE}_build_number=1999" >> "$GITHUB_OUTPUT"
           done
 
@@ -155,6 +165,7 @@ jobs:
           fi
 
   release:
+    if: ${{ github.event.inputs.trigger_release == 'true' }}
     name: Release ${{ matrix.repo }}
     runs-on: ubuntu-latest
     needs: create_and_merge_pr
@@ -245,6 +256,7 @@ jobs:
           DOCKER_RUN_ID: ${{ needs.trigger_docker_release.outputs.docker_run_id }}
           DEB_BUILD_NUMBER: ${{ needs.trigger_packages_release.outputs.deb_build_number }}
           RPM_BUILD_NUMBER: ${{ needs.trigger_packages_release.outputs.rpm_build_number }}
+          EXE_BUILD_NUMBER: ${{ needs.trigger_packages_release.outputs.exe_build_number }}
         run: |
           JOB_OUTPUT=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" \
             --jq '.jobs[] | select(.name | startswith("Release")) | "\(.name) \(.conclusion)"')
@@ -258,10 +270,18 @@ jobs:
 
           MESSAGE="\[${SUCCESS:-0}/$(echo $REPOS | wc -w)] "
           MESSAGE+='${{ github.event.inputs.branch }} → ${{ github.event.inputs.target_branch }}'
-          MESSAGE+="${STATUS}" MESSAGE+=$'\n'$'\n''Releases: '
-          MESSAGE+='[Docker](${{ github.server_url }}/${{ github.repository }}-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) '
-          MESSAGE+='| [DEB](${{ secrets.JENKINS_URL }}/job/production.deb.publish/${{ env.DEB_BUILD_NUMBER }}) '
-          MESSAGE+='| [RPM](${{ secrets.JENKINS_URL }}/job/production.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) '
+          MESSAGE+="${STATUS}" 
+          if ${{ github.event.inputs.trigger_docker_release == 'true' }} || ${{ github.event.inputs.trigger_packages_release == 'true' }}; then
+            MESSAGE+=$'\n'$'\n''Releases: '
+            if ${{ github.event.inputs.trigger_docker_release == 'true' }}; then
+              MESSAGE+='[Docker](${{ github.server_url }}/${{ github.repository }}-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) |'
+            fi
+            if ${{ github.event.inputs.trigger_packages_release == 'true' }}; then
+              MESSAGE+='[DEB](${{ secrets.JENKINS_URL }}/job/production.deb.publish/${{ env.DEB_BUILD_NUMBER }}) |'
+              MESSAGE+='[RPM](${{ secrets.JENKINS_URL }}/job/production.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) |'
+              MESSAGE+='[EXE](${{ secrets.JENKINS_URL }}/job/production.exe.publish/${{ env.EXE_BUILD_NUMBER }})'
+            fi
+          fi
 
           JSON_PAYLOAD=$(jq -n --arg CHAT_ID "${{ secrets.TELEGRAM_TO }}" --arg TEXT "${MESSAGE}" \
             '{chat_id: $CHAT_ID, text: $TEXT, parse_mode: "Markdown", disable_web_page_preview: true}')

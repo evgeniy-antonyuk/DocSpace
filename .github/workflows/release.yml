@@ -258,18 +258,9 @@ jobs:
           RPM_BUILD_NUMBER: ${{ needs.trigger_packages_release.outputs.rpm_build_number }}
           EXE_BUILD_NUMBER: ${{ needs.trigger_packages_release.outputs.exe_build_number }}
         run: |
-          if [ "${{ github.event.inputs.trigger_release }}" = "true" ]; then
-            TARGET="Release"
-          else
-            TARGET="Create/merge"
-          fi
-
-          echo $TARGET
-
+          TARGET=$([ "${{ github.event.inputs.trigger_release }}" = "true" ] && echo "Release" || echo "Create/merge")
           JOB_OUTPUT=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" \
             --jq '.jobs[] | select(.name | startswith("'"${TARGET}"'")) | "\(.name) \(.conclusion)"')
-
-          echo $JOB_OUTPUT
 
           while read -r _ REPO CONCLUSION; do JOBS_STATUS["${REPO}"]="${CONCLUSION}"; done <<< "${JOB_OUTPUT}"
 
@@ -277,6 +268,8 @@ jobs:
             [[ "${JOBS_STATUS[$REPO]:-}" == "success" ]] && SUCCESS=$((SUCCESS+1)) && EMOJI="🟢" || EMOJI="🔴"
             STATUS+=$'\n'"${EMOJI} [${REPO}](${{ github.server_url }}/${{ github.repository_owner }}/${REPO})"
           done
+
+          for repo in "${!JOBS_STATUS[@]}"; do printf "%s: %s " "$repo" "${JOBS_STATUS[$repo]}"; done; echo
 
           MESSAGE="\[${SUCCESS:-0}/$(echo $REPOS | wc -w)] "
           MESSAGE+='${{ github.event.inputs.branch }} → ${{ github.event.inputs.target_branch }}'

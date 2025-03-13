@@ -8,17 +8,19 @@ on:
         required: true
         default: 'vX.X.X'
       trigger_docker_release:
-        description: 'Docker images release'
+        type: boolean
+        description: 'Docker images release (true/false)'
         required: true
-        default: 'true'
+        default: true
       docker_version:
         description: 'Source Docker version'
         required: true
         default: 'X.X.X.XXXX'
       trigger_packages_release:
-        description: 'Packages release'
+        type: boolean
+        description: 'Packages release (true/false)'
         required: true
-        default: 'true'
+        default: true
       deb_build_number:
         description: 'deb package build number'
         required: true

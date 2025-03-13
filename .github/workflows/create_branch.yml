@@ -51,7 +51,7 @@ jobs:
           TOTAL=$(jq '[.jobs[] | select(.name | test("^Create branch in "))] | length' <<< "${JOB_OUTPUT}")
           SUCCESS=$(jq '[.jobs[] | select((.name | test("^Create branch in ")) and (.conclusion=="success"))] | length' <<< "${JOB_OUTPUT}")
 
-          MESSAGE="\[${SUCCESS}/${TOTAL}] Create ${{ github.event.inputs.branch }} (base: ${{ github.event.inputs.source_branch }})"$'\n'
+          MESSAGE="\[${SUCCESS}/${TOTAL}] Created ${{ github.event.inputs.branch }} (base: ${{ github.event.inputs.source_branch }})"$'\n'
           MESSAGE+=$(jq -r --arg OWNER "${{ github.repository_owner }}" --arg GIT_URL "${{ github.server_url }}" '
             .jobs[]
             | select(.name | test("^Create branch in "))

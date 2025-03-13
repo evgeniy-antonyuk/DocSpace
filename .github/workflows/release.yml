@@ -258,8 +258,9 @@ jobs:
           RPM_BUILD_NUMBER: ${{ needs.trigger_packages_release.outputs.rpm_build_number }}
           EXE_BUILD_NUMBER: ${{ needs.trigger_packages_release.outputs.exe_build_number }}
         run: |
+          TARGET=$([ "${{ github.event.inputs.trigger_release }}" = "true" ] && echo "Release" || echo "Create/merge")
           JOB_OUTPUT=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" \
-            --jq '.jobs[] | select(.name | startswith("Release")) | "\(.name) \(.conclusion)"')
+            --jq '.jobs[] | select(.name | startswith("'"${TARGET}"'")) | "\(.name) \(.conclusion)"')
 
           while read -r _ REPO CONCLUSION; do JOBS_STATUS["${REPO}"]="${CONCLUSION}"; done <<< "${JOB_OUTPUT}"
 

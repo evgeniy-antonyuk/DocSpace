@@ -17,7 +17,7 @@ on:
         default: 'master'
       trigger_docker_release:
         type: boolean
-        description: 'Docker images release (true/false)'
+        description: 'Docker images release'
         required: true
         default: true
       docker_version:
@@ -26,7 +26,7 @@ on:
         default: 'X.X.X.XXXX'
       trigger_packages_release:
         type: boolean
-        description: 'Packages release (true/false)'
+        description: 'Packages release'
         required: true
         default: true
       deb_build_number:

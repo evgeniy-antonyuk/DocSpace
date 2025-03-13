@@ -6,11 +6,11 @@ on:
       version:
         description: 'Release version'
         required: true
-        default: 'v3.2.3'
+        default: 'v3.2.4'
       docker_version:
         description: 'Source Docker version'
         required: true
-        default: '3.2.3.XXXX'
+        default: '3.2.4.XXXX'
       deb_build_number:
         description: 'deb package build number'
         required: true
@@ -22,7 +22,7 @@ on:
       branch:
         description: 'Release branch'
         required: true
-        default: 'release/v3.2.3'
+        default: 'release/v3.2.4'
       target_branch:
         description: 'Target branch'
         required: true

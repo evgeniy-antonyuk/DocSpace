@@ -6,23 +6,31 @@ on:
       version:
         description: 'Release version'
         required: true
-        default: 'v3.2.5'
+        default: 'vX.X.X'
+      trigger_docker_release:
+        description: 'Docker images release'
+        required: true
+        default: 'true'
       docker_version:
         description: 'Source Docker version'
         required: true
-        default: '3.2.5.XXXX'
+        default: 'X.X.X.XXXX'
+      trigger_packages_release:
+        description: 'Packages release'
+        required: true
+        default: 'true'
       deb_build_number:
         description: 'deb package build number'
         required: true
-        default: '1999'
+        default: 'XXXX'
       rpm_build_number:
         description: 'rpm package build number'
         required: true
-        default: '999'
+        default: 'XXX'
       branch:
         description: 'Release branch'
         required: true
-        default: 'release/v3.2.5'
+        default: 'release/vX.X.X'
       target_branch:
         description: 'Target branch'
         required: true
@@ -33,6 +41,7 @@ env:
 
 jobs:
   trigger_docker_release:
+    if: ${{ github.event.inputs.trigger_docker_release == 'true' }}
     name: Trigger Docker release
     runs-on: ubuntu-latest
     outputs:
@@ -59,6 +68,7 @@ jobs:
           echo "docker_run_id=${DOCKER_RUN_ID}" >> $GITHUB_OUTPUT
 
   trigger_packages_release:
+    if: ${{ github.event.inputs.trigger_packages_release == 'true' }}
     name: Trigger Packages release
     runs-on: ubuntu-latest
     outputs:
@@ -68,16 +78,17 @@ jobs:
       - name: Trigger Packages release
         id: package_release
         run: |
-          curl -X POST -s -S -L -u ${{ secrets.JENKINS_TOKEN }} \
-            -d 'RELEASE_DEB_BUILD=<SpecificBuildSelector plugin="copyartifact@749.vfb_dca_a_9b_6549"><buildNumber>${{ github.event.inputs.deb_build_number }}</buildNumber></SpecificBuildSelector>' \
-            ${{ secrets.JENKINS_URL }}/job/release.deb.publish/buildWithParameters
+          JENKINS_URL="${{ secrets.JENKINS_URL }}"; TOKEN="${{ secrets.JENKINS_TOKEN }}"; VERSION="${{ github.event.inputs.version }}"
+          declare -A NUM=([deb]="${{ github.event.inputs.deb_build_number }}" [rpm]="${{ github.event.inputs.rpm_build_number }}")
 
-          sleep 10
-
-          echo "deb_build_number=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" \
-            "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_OUTPUT
-          echo "rpm_build_number=$(curl -s -S -L -u "${{ secrets.JENKINS_TOKEN }}" \
-            "${{ secrets.JENKINS_URL }}/job/release.deb.publish/lastBuild/api/json" | jq '.number')" >> $GITHUB_OUTPUT
+          for TYPE in deb rpm; do
+            BUILD_NUM=${NUM[${TYPE}]}
+            curl -s -S -X POST -H "Content-Length: 0" -u "${TOKEN}" "${JENKINS_URL}/job/appserver.${TYPE}/$BUILD_NUM/toggleLogKeep"
+            curl -s -S -X POST -u "${TOKEN}" -d "description=${VERSION}.${BUILD_NUM}" "${JENKINS_URL}/job/appserver.${TYPE}/$BUILD_NUM/submitDescription"
+            curl -s -S -X POST -H "Content-Length: 0" -u "${TOKEN}" "${JENKINS_URL}/job/production.${TYPE}.publish/buildWithParameters"
+            sleep 10
+            echo "${TYPE}_build_number=$(curl -s -S -L -u "${TOKEN}" "${JENKINS_URL}/job/production.${TYPE}.publish/lastBuild/api/json" | jq '.number')" >> "$GITHUB_OUTPUT"
+          done
 
   create_and_merge_pr:
     name: Create/merge PRs ${{ matrix.repo }}
@@ -252,8 +263,8 @@ jobs:
           MESSAGE+='${{ github.event.inputs.branch }} → ${{ github.event.inputs.target_branch }}'
           MESSAGE+="${STATUS}" MESSAGE+=$'\n'$'\n''Releases: '
           MESSAGE+='[Docker](${{ github.server_url }}/${{ github.repository }}-buildtools/actions/runs/${{ env.DOCKER_RUN_ID }}) '
-          MESSAGE+='| [DEB](${{ secrets.JENKINS_URL }}/job/release.deb.publish/${{ env.DEB_BUILD_NUMBER }}) '
-          MESSAGE+='| [RPM](${{ secrets.JENKINS_URL }}/job/release.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) '
+          MESSAGE+='| [DEB](${{ secrets.JENKINS_URL }}/job/production.deb.publish/${{ env.DEB_BUILD_NUMBER }}) '
+          MESSAGE+='| [RPM](${{ secrets.JENKINS_URL }}/job/production.rpm.publish/${{ env.RPM_BUILD_NUMBER }}) '
 
           JSON_PAYLOAD=$(jq -n --arg CHAT_ID "${{ secrets.TELEGRAM_TO }}" --arg TEXT "${MESSAGE}" \
             '{chat_id: $CHAT_ID, text: $TEXT, parse_mode: "Markdown", disable_web_page_preview: true}')

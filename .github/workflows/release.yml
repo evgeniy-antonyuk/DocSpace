@@ -119,9 +119,11 @@ jobs:
 
       - name: Check branch existence
         run: |
-          if [ -z "$(git ls-remote --heads "https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}" "${{ github.event.inputs.branch }}")" ]; then
-            echo "::error::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}" && exit 1
-          fi
+          REPO_URL="https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}"
+          check_branch(){ git ls-remote --heads "${REPO_URL}" "$1" &>/dev/null || { echo "::error::Branch '$1' does not exist in repository ${{ matrix.repo }}" && exit 1; }; }
+
+          check_branch "${{ github.event.inputs.target_branch }}"
+          check_branch "${{ github.event.inputs.branch }}"
 
       - name: Check commits difference
         run: |

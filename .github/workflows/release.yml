@@ -15,6 +15,11 @@ on:
         description: 'Target branch'
         required: true
         default: 'master'
+      develop:
+        type: boolean
+        description: 'Merge release branch into develop'
+        required: true
+        default: true
       trigger_release:
         type: boolean
         description: 'GitHub Release'
@@ -124,6 +129,7 @@ jobs:
 
           check_branch "${{ github.event.inputs.target_branch }}"
           check_branch "${{ github.event.inputs.branch }}"
+          [ "${{ github.event.inputs.develop }}" = "true" ] && check_branch develop
 
       - name: Check commits difference
         run: |
@@ -134,47 +140,59 @@ jobs:
             echo "::warning::No changes between '${{ github.event.inputs.target_branch }}' and '${{ github.event.inputs.branch }}'. Skipping PR."
             echo "SKIP_PR=true" >> $GITHUB_ENV
           fi
+          if [ "${{ github.event.inputs.develop }}" = "true" ] && git diff --quiet origin/develop origin/${{ github.event.inputs.branch }}; then
+            echo "::warning::No changes between 'develop' and '${{ github.event.inputs.branch }}'. Skipping develop PR."
+            echo "SKIP_PR_DEVELOP=true" >> $GITHUB_ENV
+          fi
 
       - name: Create Pull Request
         if: ${{ env.SKIP_PR != 'true' }}
         run: |
-          PR_NUMBER=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-            --state open --fields index,head,base --output json \
-            | jq -r '.[] | select(.head=="${{ github.event.inputs.branch }}" and .base=="${{ github.event.inputs.target_branch }}") | .index')
+          BRANCHES=("${{ github.event.inputs.target_branch }}")
+          [[ "${{ github.event.inputs.develop }}" == "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
+          for BRANCH in "${BRANCHES[@]}"; do
+            PR_NUMBER=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+              --state open --fields index,head,base --output json \
+              | jq -r '.[] | select(.head=="${{ github.event.inputs.branch }}" and .base=="${BRANCH}") | .index')
 
-          if [[ -n "$PR_NUMBER" ]]; then
-            echo "Pull request #$PR_NUMBER already exists in ${{ matrix.repo }}"
-          else
-            tea pr create --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-              --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} \
-              -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" \
-              -d "Automatically created by Release Action"
-          fi
+            if [[ -n "$PR_NUMBER" ]]; then
+              echo "Pull request #$PR_NUMBER already exists in ${{ matrix.repo }}"
+            else
+              tea pr create --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+                --base ${BRANCH} --head ${{ github.event.inputs.branch }} \
+                -t "Merge ${{ github.event.inputs.branch }} into ${BRANCH}" \
+                -d "Automatically created by Release Action"
+            fi
+          done
 
       - name: Auto merge Pull Request
         if: ${{ env.SKIP_PR != 'true' }}
         run: |
-          PR_NUMBER=$(timeout 60 bash -c 'while :; do 
-            NUM=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-            --state open --fields index,head,base --output json \
-            | jq -r ".[] | select(.head==\"${{ github.event.inputs.branch }}\" and .base==\"${{ github.event.inputs.target_branch }}\") | .index")
-            [[ -n "$NUM" && "$NUM" != "UNKNOWN" ]] && echo $NUM; sleep 2; exit 0; 
-          done;')
+          BRANCHES=("${{ github.event.inputs.target_branch }}")
+          [[ "${{ github.event.inputs.develop }}" = "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
+          for BRANCH in "${BRANCHES[@]}"; do
+            PR_NUMBER=$(timeout 60 bash -c 'while :; do 
+              NUM=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+              --state open --fields index,head,base --output json \
+              | jq -r ".[] | select(.head==\"${{ github.event.inputs.branch }}\" and .base==\"${BRANCH}\") | .index")
+              [[ -n "$NUM" && "$NUM" != "UNKNOWN" ]] && echo $NUM; sleep 2; exit 0; 
+            done;')
 
-          if [ -z "${PR_NUMBER}" ]; then
-            echo "::error::Failed to find open PR in ${{ matrix.repo }}" && exit 1
-          fi
+            if [ -z "${PR_NUMBER}" ]; then
+              echo "::error::Failed to find open PR in ${{ matrix.repo }}" && exit 1
+            fi
 
-          MERGEABLE_STATUS=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-            --state all --fields index,mergeable --output json | jq -r ".[] | select(.index==${PR_NUMBER}) | .mergeable")
+            MERGEABLE_STATUS=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+              --state all --fields index,mergeable --output json | jq -r ".[] | select(.index==${PR_NUMBER}) | .mergeable")
 
-          if [ "${MERGEABLE_STATUS}" = "true" ]; then
-            tea pr merge --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-              -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" ${PR_NUMBER} \
-              || echo "::error::Failed to merge PR #$PR_NUMBER in ${{ matrix.repo }}"
-          else
-            echo "::warning::PR #$PR_NUMBER in ${{ matrix.repo }} is not mergeable or contains conflicts."
-          fi
+            if [ "${MERGEABLE_STATUS}" = "true" ]; then
+              tea pr merge --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+                -t "Merge ${{ github.event.inputs.branch }} into ${BRANCH}" ${PR_NUMBER} \
+                || echo "::error::Failed to merge PR #$PR_NUMBER in ${{ matrix.repo }}"
+            else
+              echo "::warning::PR #$PR_NUMBER in ${{ matrix.repo }} is not mergeable or contains conflicts."
+            fi
+          done
 
   release:
     if: ${{ github.event.inputs.trigger_release == 'true' }}
@@ -197,22 +215,26 @@ jobs:
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
         run: |
           echo "Waiting for PR merges in all repositories..."
+          BRANCHES=("${{ github.event.inputs.target_branch }}")
+          [[ "${{ github.event.inputs.develop }}" == "true" ]] && BRANCHES+=("develop")
+          TOTAL=$(( $(set -- ${REPOS}; echo $#) * ${#BRANCHES[@]} ))
           while :; do
             MERGED=0
             for REPO in ${REPOS}; do
-              PR_JSON=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${REPO} \
-                --state all --fields head,base,state,url --output json \
-                | jq -c --arg head "${{ github.event.inputs.branch }}" --arg base "${{ github.event.inputs.target_branch }}" \
-                '[.[]|select(.head==$head and .base==$base)] | if length>0 then .[0] else {state: "not_found", url: ""} end')
-              PR_STATE=$(echo "${PR_JSON}" | jq -r '.state') 
+              for BRANCH in "${BRANCHES[@]}"; do
+                PR_JSON=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${REPO} \
+                  --state all --fields head,base,state,url --output json \
+                  | jq -c --arg head "${{ github.event.inputs.branch }}" --arg base "${BRANCH}" \
+                  '[.[]|select(.head==$head and .base==$base)] | if length>0 then .[0] else {state: "not_found", url: ""} end')
+                PR_STATE=$(echo "${PR_JSON}" | jq -r '.state') 
 
-              echo "PR state for $REPO: ${PR_STATE}"
-
-             [[ "${PR_STATE}" == merged || "${PR_STATE}" == closed ]] && MERGED=$((MERGED + 1))
-              [ "${PR_STATE}" = "not_found" ] && REPOS=$(xargs -n1 <<< "$REPOS" | grep -vx "$REPO" | xargs)
+                echo "[${REPO}:${BRANCH}] PR status: ${PR_STATE}"
+                [[ "${PR_STATE}" == merged || "${PR_STATE}" == closed ]] && MERGED=$((MERGED + 1))
+                [ "${PR_STATE}" = "not_found" ] && TOTAL=$(( TOTAL - 1 ));
+              done
             done
             printf '%.0s-' {1..48}; echo
-            [ "${MERGED}" -eq "$(echo ${REPOS} | wc -w)" ] && break
+            [ "${MERGED}" -eq "${TOTAL}" ] && break || echo "${MERGED}/${TOTAL} PR(s) merged. Waiting for the rest..."
             sleep 5
           done
 

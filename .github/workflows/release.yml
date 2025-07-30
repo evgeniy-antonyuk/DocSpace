@@ -87,18 +87,20 @@ jobs:
         id: package_release
         run: |
           JENKINS_URL="${{ secrets.JENKINS_URL }}"; TOKEN="${{ secrets.JENKINS_TOKEN }}"; VERSION="${{ github.event.inputs.version }}"
-          declare -A NUM
-          IFS='/' read -r NUM[deb] NUM[rpm] NUM[exe] <<< "${{ github.event.inputs.package_build_numbers }}"
+          declare -A NUM; IFS='/' read -r NUM[deb] NUM[rpm] NUM[exe] <<< "${{ github.event.inputs.package_build_numbers }}"
 
           for TYPE in deb rpm exe; do
             BUILD_NUM=${NUM[${TYPE}]}
             PUBLISH_JOB=$([ "$TYPE" = "exe" ] && echo "production.docspace.${TYPE}.publish" || echo "production.${TYPE}.publish")
 
             curl -s -S -X POST -H "Content-Length: 0" -u "${TOKEN}" "${JENKINS_URL}/job/appserver.${TYPE}/${BUILD_NUM}/toggleLogKeep" -o /dev/null
+            [[ $(jq -r '.keepLog' <<< "$(curl -s -u "${TOKEN}" "${JENKINS_URL}/job/appserver.${TYPE}/${BUILD_NUM}/api/json")") == true ]] || echo "::error:: [${TYPE}] LogKeep not applied"
             curl -s -S -X POST -u "${TOKEN}" -d "description=${VERSION}.${BUILD_NUM}" "${JENKINS_URL}/job/appserver.${TYPE}/${BUILD_NUM}/submitDescription" -o /dev/null
-            ENDPOINT=$([ "$TYPE" = "exe" ] && echo "build" || echo "buildWithParameters")
-            curl -s -S -X POST -H "Content-Length: 0" -u "${TOKEN}" "${JENKINS_URL}/job/${PUBLISH_JOB}/${ENDPOINT}" -o /dev/null
+            [[ $(jq -r '.description' <<< "$(curl -s -u "${TOKEN}" "${JENKINS_URL}/job/appserver.${TYPE}/${BUILD_NUM}/api/json")") != "" ]] || echo "::error:: [${TYPE}] Description not set"
+
+            curl -s -S -X POST -H "Content-Length: 0" -u "${TOKEN}" "${JENKINS_URL}/job/${PUBLISH_JOB}/$([ "${TYPE}" = "exe" ] && echo "build" || echo "buildWithParameters")" -o /dev/null
             sleep 10
+            [[ $(jq -r '.building' <<< "$(curl -s -u "${TOKEN}" "${JENKINS_URL}/job/${PUBLISH_JOB}/lastBuild/api/json")") == true ]] && echo "[${TYPE}] Build started" || echo "::error:: [${TYPE}] Build not started"
             echo "${TYPE}_build_number=$(curl -s -S -L -u "${TOKEN}" "${JENKINS_URL}/job/${PUBLISH_JOB}/lastBuild/api/json" | jq '.number')" >> "$GITHUB_OUTPUT"
           done
 

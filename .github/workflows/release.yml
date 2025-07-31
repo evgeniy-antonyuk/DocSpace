@@ -352,3 +352,27 @@ jobs:
               -d "text=ONLYOFFICE DocSpace [${{ env.VERSION }}](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md) for Docker, Linux and Windows has been released")
             echo "${RELEASE_NOTIFICATION_CHAT_RESPONSE}" | jq -e '.ok' > /dev/null || { echo "::error:: Error sending to RELEASE NOTIFICATION CHAT - $(echo "${RELEASE_NOTIFICATION_CHAT_RESPONSE}" | jq -r '.description')" >&2; exit 1; }
           fi
+
+  delete-branch:
+    name: Delete release branch
+    needs: [trigger_docker_release, trigger_packages_release, release, notify]
+    if: ${{ success() }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
+    steps:
+      - name: Delete release branch
+        env:
+          BRANCH: ${{ github.event.inputs.branch }}
+        run: |
+          GITEA_API_URL="https://${{ secrets.GITEA_HOST }}/api/v1/repos/${{ github.repository_owner }}/${{ matrix.repo }}/branches/${BRANCH//\//%2F}"
+          if curl -sf -H "Authorization: token ${{ secrets.GITEA_TOKEN }}" "${GITEA_API_URL}"; then
+            if curl -sf -X DELETE -H "Authorization: token ${{ secrets.GITEA_TOKEN }}" "${GITEA_API_URL}"; then
+              echo "Branch '${BRANCH}' successfully deleted in ${{ matrix.repo }}."
+            else
+              echo "Error deleting branch in ${{ matrix.repo }}: HTTP status $(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H \"Authorization: token ${{ secrets.GITEA_TOKEN }}\" \"${GITEA_API_URL}\")" >&2 && exit 1
+            fi
+          else
+            echo "::warning:: Branch '${BRANCH}' not found in ${{ matrix.repo }}." >&2 && exit 1
+          fi

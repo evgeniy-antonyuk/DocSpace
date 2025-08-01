@@ -140,32 +140,40 @@ jobs:
 
       - name: Check branch existence
         run: |
-          REPO_URL="https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}"
-          check_branch(){ git ls-remote --heads "${REPO_URL}" "$1" &>/dev/null || { echo "::error::Branch '$1' does not exist in repository ${{ matrix.repo }}" && exit 1; }; }
-
+          check_branch(){
+            GIT_OUTPUT=$(git ls-remote --heads "https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}" "refs/heads/${1%\*}*")
+            [[ -z ${GIT_OUTPUT} ]] && { echo "::error::Branch '$1' does not exist in repository ${{ matrix.repo }}"; [[ $1 == changelog/* ]] && return 0 || exit 1; }
+            BRANCH_NAME=$(awk '{ sub("refs\/heads\/","",$2); print $2 }' <<<"$GIT_OUTPUT")
+            echo "Branch $BRANCH_NAME found"
+            [[ $1 == changelog/* ]] && echo "CHANGELOG_BRANCH=${BRANCH_NAME}" >> "$GITHUB_ENV"
+          }
           check_branch "${{ github.event.inputs.target_branch }}"
           check_branch "${{ github.event.inputs.branch }}"
           [ "${{ github.event.inputs.develop }}" = "true" ] && check_branch develop
+          [ "${{ matrix.repo }}" = "DocSpace" ] && check_branch 'changelog/*'
 
       - name: Check commits difference
         run: |
           git clone https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}
-          cd ${{ matrix.repo }}
-          git fetch --quiet --all
-          if git diff --quiet origin/${{ github.event.inputs.target_branch }} origin/${{ github.event.inputs.branch }}; then
-            echo "::warning::No changes between '${{ github.event.inputs.target_branch }}' and '${{ github.event.inputs.branch }}'. Skipping PR."
-            echo "SKIP_PR=true" >> $GITHUB_ENV
-          fi
-          if [ "${{ github.event.inputs.develop }}" = "true" ] && git diff --quiet origin/develop origin/${{ github.event.inputs.branch }}; then
-            echo "::warning::No changes between 'develop' and '${{ github.event.inputs.branch }}'. Skipping develop PR."
-            echo "SKIP_PR_DEVELOP=true" >> $GITHUB_ENV
-          fi
+          cd ${{ matrix.repo }} && git fetch --quiet --all
+
+          check_commits_difference(){
+            BASE=$1; FLAG=$2; LABEL=${3:-$BASE}
+            git diff --quiet origin/"${BASE}" origin/${{ github.event.inputs.branch }} \
+              && echo "::warning::No changes between '${BASE}' and '${{ github.event.inputs.branch }}'. Skipping ${LABEL} PR." \
+              && echo "${FLAG}=true" >> $GITHUB_ENV
+          }
+
+          check_commits_difference "${{ github.event.inputs.target_branch }}" SKIP_PR
+          [[ "${{ github.event.inputs.develop }}" == "true" ]] && check_commits_difference develop SKIP_PR_DEVELOP
+          [ -n "${{ env.CHANGELOG_BRANCH }}" ] && check_commits_difference "${{ env.CHANGELOG_BRANCH }}" SKIP_PR_CHANGELOG
 
       - name: Create Pull Request
         if: ${{ env.SKIP_PR != 'true' }}
         run: |
           BRANCHES=("${{ github.event.inputs.target_branch }}")
           [[ "${{ github.event.inputs.develop }}" == "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
+          [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
           for BRANCH in "${BRANCHES[@]}"; do
             PR_NUMBER=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
               --state open --fields index,head,base --output json \
@@ -186,6 +194,7 @@ jobs:
         run: |
           BRANCHES=("${{ github.event.inputs.target_branch }}")
           [[ "${{ github.event.inputs.develop }}" = "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
+          [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
           for BRANCH in "${BRANCHES[@]}"; do
             PR_NUMBER=$(timeout 60 bash -c 'while :; do 
               NUM=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \

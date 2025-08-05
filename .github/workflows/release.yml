@@ -195,7 +195,6 @@ jobs:
       - name: Auto merge Pull Request
         if: ${{ env.SKIP_PR != 'true' }}
         run: |
-          set -x
           BRANCHES=("${{ github.event.inputs.target_branch }}")
           [[ "${{ github.event.inputs.develop }}" = "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
           [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
@@ -257,6 +256,7 @@ jobs:
           while :; do
             MERGED=0
             for REPO in ${REPOS}; do
+              echo "├ ${REPO}"
               for BRANCH in "${BRANCHES[@]}"; do
                 PR_JSON=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${REPO} \
                   --state all --fields head,base,state,url --output json \
@@ -264,13 +264,13 @@ jobs:
                   '[.[]|select(.head==$head and .base==$base)] | if length>0 then .[0] else {state: "not_found", url: ""} end')
                 PR_STATE=$(echo "${PR_JSON}" | jq -r '.state') 
 
-                echo "[${REPO}:${BRANCH}] PR status: ${PR_STATE}"
-                [[ "${PR_STATE}" == merged || "${PR_STATE}" == closed ]] && MERGED=$((MERGED + 1))
+                echo "│  ├ ${BRANCH} ${PR_STATE}"
+                [[ "${PR_STATE}" == merged ]] && MERGED=$((MERGED + 1))
                 [ "${PR_STATE}" = "not_found" ] && TOTAL=$(( TOTAL - 1 ));
               done
             done
-            printf '%.0s-' {1..48}; echo
             [ "${MERGED}" -eq "${TOTAL}" ] && break || echo "${MERGED}/${TOTAL} PR(s) merged. Waiting for the rest..."
+            printf '%.0s-' {1..48}; echo
             sleep 5
           done
 

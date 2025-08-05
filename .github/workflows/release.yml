@@ -154,7 +154,6 @@ jobs:
 
       - name: Check commits difference
         run: |
-          set -x
           git clone https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}
           cd ${{ matrix.repo }} && git fetch --quiet --all
 
@@ -194,6 +193,7 @@ jobs:
       - name: Auto merge Pull Request
         if: ${{ env.SKIP_PR != 'true' }}
         run: |
+          set -x
           BRANCHES=("${{ github.event.inputs.target_branch }}")
           [[ "${{ github.event.inputs.develop }}" = "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
           [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
@@ -201,7 +201,7 @@ jobs:
             PR_NUMBER=$(timeout 60 bash -c 'while :; do 
               NUM=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
               --state open --fields index,head,base --output json \
-              | jq -r ".[] | select(.head==\"${{ github.event.inputs.branch }}\" and .base==\"${BRANCH}\") | .index")
+              | jq -r --arg base "'"${BRANCH}"'" ".[] | | select(.head==\"${{ github.event.inputs.branch }}\" and .base==\$base) | .index")
               [[ -n "$NUM" && "$NUM" != "UNKNOWN" ]] && echo $NUM; sleep 2; exit 0; 
             done;')
 

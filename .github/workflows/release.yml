@@ -265,7 +265,6 @@ jobs:
                 PR_STATE=$(echo "${PR_JSON}" | jq -r '.state') 
 
                 [[ "${PR_STATE}" == merged ]] && { MERGED=$((MERGED + 1)); echo "│  ├ ${BRANCH} ✅ ${PR_STATE}"; } || { echo "│  ├ ${BRANCH} ❌ ${PR_STATE}"; }
-                [ "${PR_STATE}" = "not_found" ] && TOTAL=$(( TOTAL - 1 ));
               done
             done
             [ "${MERGED}" -eq "${TOTAL}" ] && break || echo "${MERGED}/${TOTAL} PR(s) merged. Waiting for the rest..."

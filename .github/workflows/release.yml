@@ -160,9 +160,10 @@ jobs:
 
           check_commits_difference(){
             BASE=$1; FLAG=$2; LABEL=${3:-$BASE}
-            git diff --quiet origin/"${BASE}" origin/${{ github.event.inputs.branch }} \
-              && echo "::warning::No changes between '${BASE}' and '${{ github.event.inputs.branch }}'. Skipping ${LABEL} PR." \
-              && echo "${FLAG}=true" >> $GITHUB_ENV
+            if git diff --quiet origin/"${BASE}" origin/${{ github.event.inputs.branch }}; then
+              echo "::warning::No changes between '${BASE}' and '${{ github.event.inputs.branch }}'. Skipping ${LABEL} PR."
+              echo "${FLAG}=true" >> $GITHUB_ENV
+            fi
           }
 
           check_commits_difference "${{ github.event.inputs.target_branch }}" SKIP_PR

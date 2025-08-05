@@ -169,7 +169,7 @@ jobs:
 
           check_commits_difference "${{ github.event.inputs.target_branch }}" "${{ github.event.inputs.branch }}" "SKIP_PR"
           if [[ "${{ github.event.inputs.develop }}" == "true" ]]; then
-            check_commits_difference "${{ github.event.inputs.target_branch }}" "develop" "SKIP_PR_DEVELOP"
+            check_commits_difference "${{ github.event.inputs.branch }}" "develop" "SKIP_PR_DEVELOP"
           fi
           if [[ -n "${{ env.CHANGELOG_BRANCH }}" ]]; then
             check_commits_difference "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.branch }}" "SKIP_PR_CHANGELOG"

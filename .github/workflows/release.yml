@@ -47,6 +47,7 @@ on:
 
 jobs:
   extract-version:
+    name: Version retrieval
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.extract.outputs.version }}

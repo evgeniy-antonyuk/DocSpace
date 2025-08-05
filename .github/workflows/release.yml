@@ -165,9 +165,9 @@ jobs:
             fi
           }
 
-          check_commits_difference "${{ github.event.inputs.target_branch }} ${{ github.event.inputs.branch }}" SKIP_PR
-          [[ "${{ github.event.inputs.develop }}" == "true" ]] && check_commits_difference ${{ github.event.inputs.target_branch }} develop SKIP_PR_DEVELOP
-          [ ! -z "${{ env.CHANGELOG_BRANCH }}" ] && check_commits_difference "${{ env.CHANGELOG_BRANCH }}" ${{ github.event.inputs.target_branch }} SKIP_PR_CHANGELOG
+          check_commits_difference "${{ github.event.inputs.target_branch }}" "${{ github.event.inputs.branch }}" "SKIP_PR"
+          [[ "${{ github.event.inputs.develop }}" == "true" ]] && check_commits_difference "${{ github.event.inputs.target_branch }}" "develop" "SKIP_PR_DEVELOP"
+          [ ! -z "${{ env.CHANGELOG_BRANCH }}" ] && check_commits_difference "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.target_branch }}" "SKIP_PR_CHANGELOG"
 
       - name: Create Pull Request
         if: ${{ env.SKIP_PR != 'true' || env.SKIP_PR_DEVELOP != 'true' || env.SKIP_PR_CHANGELOG != 'true' }}

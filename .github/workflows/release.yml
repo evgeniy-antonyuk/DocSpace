@@ -172,6 +172,7 @@ jobs:
       - name: Create Pull Request
         if: ${{ env.SKIP_PR != 'true' || env.SKIP_PR_DEVELOP != 'true' || env.SKIP_PR_CHANGELOG != 'true' }}
         run: |
+          set -x
           HEAD_BRANCHES=(
             "${{ github.event.inputs.branch }}"
             $( [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && echo "${{ env.CHANGELOG_BRANCH }}" )
@@ -180,6 +181,8 @@ jobs:
             $( [[ "${{ env.SKIP_PR }}" != "true" ]] && echo "${{ github.event.inputs.target_branch }}" )
             $( [[ "${{ github.event.inputs.develop }}" == "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && echo "develop" )
           )
+            echo ${BASE_BRANCHES[@]} 
+            echo ${HEAD_BRANCHES[@]}
           for BASE in "${BASE_BRANCHES[@]}"; do
             for HEAD in "${HEAD_BRANCHES[@]}"; do
               PR_NUMBER=$(tea pr list --login "${{ secrets.GITEA_HOST }}" \

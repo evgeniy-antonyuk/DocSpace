@@ -154,6 +154,7 @@ jobs:
 
       - name: Check commits difference
         run: |
+          set -x
           git clone https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}
           cd ${{ matrix.repo }} && git fetch --quiet --all
 

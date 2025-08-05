@@ -170,9 +170,9 @@ jobs:
           [ -n "${{ env.CHANGELOG_BRANCH }}" ] && check_commits_difference "${{ env.CHANGELOG_BRANCH }}" SKIP_PR_CHANGELOG || true
 
       - name: Create Pull Request
-        if: ${{ !( env.SKIP_PR == 'true' || env.SKIP_PR_DEVELOP == 'true' || env.SKIP_PR_CHANGELOG == 'true' ) }}
+        if: ${{ env.SKIP_PR != 'true' || env.SKIP_PR_DEVELOP != 'true' || env.SKIP_PR_CHANGELOG != 'true' }}
         run: |
-          BRANCHES=("${{ github.event.inputs.target_branch }}")
+          [[ "${{ env.SKIP_PR }}" != "true" ]] && BRANCHES=("${{ github.event.inputs.target_branch }}")
           [[ "${{ github.event.inputs.develop }}" == "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
           [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
           for BRANCH in "${BRANCHES[@]}"; do
@@ -193,9 +193,9 @@ jobs:
           done
 
       - name: Auto merge Pull Request
-        if: ${{ !( env.SKIP_PR == 'true' || env.SKIP_PR_DEVELOP == 'true' || env.SKIP_PR_CHANGELOG == 'true' ) }}
+        if: ${{ env.SKIP_PR != 'true' || env.SKIP_PR_DEVELOP != 'true' || env.SKIP_PR_CHANGELOG != 'true' }}
         run: |
-          BRANCHES=("${{ github.event.inputs.target_branch }}")
+          [[ "${{ env.SKIP_PR }}" != "true" ]] && BRANCHES=("${{ github.event.inputs.target_branch }}")
           [[ "${{ github.event.inputs.develop }}" = "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
           [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
           for BRANCH in "${BRANCHES[@]}"; do

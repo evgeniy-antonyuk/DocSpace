@@ -396,7 +396,7 @@ jobs:
 
   delete-branch:
     name: Delete release branch
-    needs: [trigger_docker_release, trigger_packages_release, release]
+    needs: release
     if: ${{ success() }}
     runs-on: ubuntu-latest
     strategy:

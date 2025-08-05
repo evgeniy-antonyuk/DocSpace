@@ -146,7 +146,7 @@ jobs:
             [[ -z ${GIT_OUTPUT} ]] && { echo "::error::Branch '$1' does not exist in repository ${{ matrix.repo }}"; [[ $1 == changelog/* ]] && return 0 || return 1; }
             BRANCH_NAME=$(awk '{ sub("refs/heads/","",$2); print $2 }' <<<"$GIT_OUTPUT")
             echo "Branch $BRANCH_NAME found"
-            [[ $1 == changelog/* ]] && echo "CHANGELOG_BRANCH=${BRANCH_NAME}" >> "$GITHUB_ENV"
+            [[ $1 == changelog/* ]] && echo "CHANGELOG_BRANCH=${BRANCH_NAME}" >> "$GITHUB_ENV" || true
           }
           check_branch "${{ github.event.inputs.target_branch }}" || exit 1
           check_branch "${{ github.event.inputs.branch }}" || exit 1

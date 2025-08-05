@@ -145,12 +145,12 @@ jobs:
             [[ -z ${GIT_OUTPUT} ]] && { echo "::error::Branch '$1' does not exist in repository ${{ matrix.repo }}"; [[ $1 == changelog/* ]] && return 0 || return 1; }
             BRANCH_NAME=$(awk '{ sub("refs/heads/","",$2); print $2 }' <<<"$GIT_OUTPUT")
             echo "Branch $BRANCH_NAME found"
-            [[ ${1} != changelog/* ]] || echo "CHANGELOG_BRANCH=${BRANCH_NAME}" >> "$GITHUB_ENV"
+            [[ ${1} == changelog/* ]] && echo "CHANGELOG_BRANCH=${BRANCH_NAME}" >> "$GITHUB_ENV" || true
           }
           check_branch "${{ github.event.inputs.target_branch }}" || exit 1
           check_branch "${{ github.event.inputs.branch }}" || exit 1
-          [ "${{ github.event.inputs.develop }}" != "true" ] || { check_branch develop || exit 1; }
-          [ "${{ matrix.repo }}" != "DocSpace" ] || check_branch 'changelog/*'
+          [ "${{ github.event.inputs.develop }}" = "true" ] && { check_branch develop || exit 1; } || true
+          [ "${{ matrix.repo }}" = "DocSpace" ] && check_branch 'changelog/*' || true
 
       - name: Check commits difference
         run: |
@@ -167,7 +167,7 @@ jobs:
 
           check_commits_difference "${{ github.event.inputs.target_branch }}" "${{ github.event.inputs.branch }}" "SKIP_PR"
           [[ "${{ github.event.inputs.develop }}" == "true" ]] && check_commits_difference "${{ github.event.inputs.target_branch }}" "develop" "SKIP_PR_DEVELOP"
-          [ ! -z "${{ env.CHANGELOG_BRANCH }}" ] && check_commits_difference "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.target_branch }}" "SKIP_PR_CHANGELOG"
+          [[ -n "${{ env.CHANGELOG_BRANCH }}" ]] && check_commits_difference "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.branch }}" "SKIP_PR_CHANGELOG" || true
 
       - name: Create Pull Request
         if: ${{ env.SKIP_PR != 'true' || env.SKIP_PR_DEVELOP != 'true' || env.SKIP_PR_CHANGELOG != 'true' }}

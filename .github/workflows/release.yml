@@ -140,7 +140,6 @@ jobs:
 
       - name: Check branch existence
         run: |
-          set -x
           check_branch(){
             GIT_OUTPUT=$(git ls-remote --heads "https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}" "refs/heads/${1%\*}*")
             [[ -z ${GIT_OUTPUT} ]] && { echo "::error::Branch '$1' does not exist in repository ${{ matrix.repo }}"; [[ $1 == changelog/* ]] && return 0 || return 1; }

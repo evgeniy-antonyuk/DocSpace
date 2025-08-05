@@ -6,7 +6,7 @@ on:
       branch:
         description: 'Release branch'
         required: true
-        default: 'release/vX.X.X'
+        default: 'release/v3.0.0'
       target_branch:
         description: 'Target branch'
         required: true
@@ -20,12 +20,12 @@ on:
         type: boolean
         description: 'GitHub Release'
         required: true
-        default: true
+        default: false
       trigger_docker_release:
         type: boolean
         description: 'Docker images release'
         required: true
-        default: true
+        default: false
       docker_version:
         description: 'Source Docker version'
         required: true
@@ -34,7 +34,7 @@ on:
         type: boolean
         description: 'Packages release'
         required: true
-        default: true
+        default: false
       package_build_numbers:
         description: 'deb/rpm/exe package build numbers (with /)'
         required: true
@@ -43,7 +43,7 @@ on:
         type: boolean
         description: 'Notify'
         required: true
-        default: true
+        default: false
 
 jobs:
   extract-version:

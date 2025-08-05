@@ -161,7 +161,8 @@ jobs:
 
           check_commits_difference(){
             HEAD=$1; BASE=$2; FLAG=${3}
-            if git diff --quiet origin/${HEAD} origin/${BASE}; then
+            COMMITS=$(git log origin/${BASE}..origin/${HEAD} --oneline)
+            if [ -z "$COMMITS" ]; then
               echo "::warning::No changes between '${HEAD}' and '${BASE}'. Skipping PR."
               echo "${FLAG}=true" >> $GITHUB_ENV
             fi

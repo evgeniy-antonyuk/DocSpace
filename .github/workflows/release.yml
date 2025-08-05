@@ -202,6 +202,7 @@ jobs:
       - name: Auto merge Pull Request
         if: ${{ env.SKIP_PR != 'true' || env.SKIP_PR_DEVELOP != 'true' || env.SKIP_PR_CHANGELOG != 'true' }}
         run: |
+          set -x
           HEAD_BRANCHES=( "${{ github.event.inputs.branch }}" )
           [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && HEAD_BRANCHES+=( "${{ env.CHANGELOG_BRANCH }}" )
 

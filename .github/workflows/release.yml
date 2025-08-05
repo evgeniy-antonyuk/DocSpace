@@ -167,12 +167,12 @@ jobs:
             fi
           }
 
-          check_commits_difference "${{ github.event.inputs.target_branch }}" "${{ github.event.inputs.branch }}" "SKIP_PR"
+          check_commits_difference "${{ github.event.inputs.branch }}" "${{ github.event.inputs.target_branch }}" "SKIP_PR"
           if [[ "${{ github.event.inputs.develop }}" == "true" ]]; then
             check_commits_difference "${{ github.event.inputs.branch }}" "develop" "SKIP_PR_DEVELOP"
           fi
           if [[ -n "${{ env.CHANGELOG_BRANCH }}" ]]; then
-            check_commits_difference "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.branch }}" "SKIP_PR_CHANGELOG"
+            check_commits_difference "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.target_branch }}" "SKIP_PR_CHANGELOG"
           fi
 
       - name: Create Pull Request
@@ -198,7 +198,7 @@ jobs:
             fi
           }
 
-          create_pr "${{ github.event.inputs.branch }}" "${{ github.event.inputs.target_branch }}"
+          [[ "${{ env.SKIP_PR }}" != "true" ]] && create_pr "${{ github.event.inputs.branch }}" "${{ github.event.inputs.target_branch }}"
           if [[ "${{ github.event.inputs.develop }}" == "true"  && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]]; then
             create_pr "${{ github.event.inputs.branch }}" develop
           fi
@@ -241,7 +241,7 @@ jobs:
             fi
           }
 
-          merge "${{ github.event.inputs.branch }}" "${{ github.event.inputs.target_branch }}"
+          [[ "${{ env.SKIP_PR }}" != "true" ]] && merge "${{ github.event.inputs.branch }}" "${{ github.event.inputs.target_branch }}"
           if [[ "${{ github.event.inputs.develop }}" == "true"  && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]]; then
             merge "${{ github.event.inputs.branch }}" develop
           fi

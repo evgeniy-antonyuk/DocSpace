@@ -168,7 +168,7 @@ jobs:
 
           check_commits_difference "${{ github.event.inputs.target_branch }}" SKIP_PR
           [[ "${{ github.event.inputs.develop }}" == "true" ]] && check_commits_difference develop SKIP_PR_DEVELOP
-          [ -n "${{ env.CHANGELOG_BRANCH }}" ] && check_commits_difference "${{ env.CHANGELOG_BRANCH }}" SKIP_PR_CHANGELOG
+          [ -n "${{ env.CHANGELOG_BRANCH }}" ] && check_commits_difference "${{ env.CHANGELOG_BRANCH }}" SKIP_PR_CHANGELOG || true
 
       - name: Create Pull Request
         if: ${{ env.SKIP_PR != 'true' }}

@@ -150,8 +150,8 @@ jobs:
           }
           check_branch "${{ github.event.inputs.target_branch }}" || exit 1
           check_branch "${{ github.event.inputs.branch }}" || exit 1
-          [ "${{ github.event.inputs.develop }}" = "true" ] && { check_branch develop || exit 1; }
-          [ "${{ matrix.repo }}" = "DocSpace" ] && check_branch 'changelog/*'
+          [ "${{ github.event.inputs.develop }}" == "true" ] && { check_branch develop || exit 1; }
+          [ "${{ matrix.repo }}" == "DocSpace" ] && check_branch 'changelog/*'
 
       - name: Check commits difference
         run: |

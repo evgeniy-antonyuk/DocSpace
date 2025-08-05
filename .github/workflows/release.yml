@@ -3,10 +3,6 @@ name: Release Action
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Release version'
-        required: true
-        default: 'vX.X.X'
       branch:
         description: 'Release branch'
         required: true
@@ -15,6 +11,11 @@ on:
         description: 'Target branch'
         required: true
         default: 'master'
+      develop:
+        type: boolean
+        description: 'Merge release branch into develop'
+        required: true
+        default: true
       trigger_release:
         type: boolean
         description: 'GitHub Release'
@@ -28,7 +29,7 @@ on:
       docker_version:
         description: 'Source Docker version'
         required: true
-        default: 'X.X.X.XXXX'
+        default: 'XXXX'
       trigger_packages_release:
         type: boolean
         description: 'Packages release'
@@ -45,26 +46,42 @@ on:
         default: true
 
 jobs:
+  extract-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - id: extract
+        name: Extract & validate version
+        shell: bash
+        env:
+          BRANCH: ${{ github.event.inputs.branch }}
+        run: |
+          [[ "${BRANCH##*/}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            && version="${BASH_REMATCH[0]}" || { echo "::error::Invalid version: ${BRANCH##*/} (expected vX.X.X)"; exit 1; }
+          echo "version=$version" >>"${GITHUB_OUTPUT}"
+
   trigger_docker_release:
     if: ${{ github.event.inputs.trigger_docker_release == 'true' }}
     name: Trigger Docker release
     runs-on: ubuntu-latest
+    needs: extract-version
     outputs:
       docker_run_id: ${{ steps.docker_release.outputs.docker_run_id }}
     env:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      VERSION: ${{ needs.extract-version.outputs.version }}
     steps:
       - name: Trigger Docker release
         id: docker_release
         run: |
-          DOCKER_VERSION="${{ github.event.inputs.version }}"
-          DOCKER_VERSION="${DOCKER_VERSION#v}.1"
+          DOCKER_VERSION="${VERSION#v}.1"
 
           WORKFLOW_ID=$(gh api repos/${{ github.repository }}-buildtools/actions/workflows \
             --jq '.workflows[] | select(.path == ".github/workflows/release-docspace.yaml") | .id')
 
           gh api /repos/${{ github.repository }}-buildtools/actions/workflows/${WORKFLOW_ID}/dispatches -X POST \
-            -f "ref=${{ github.ref_name }}" -f "inputs[release_version]=${DOCKER_VERSION}" -f "inputs[source_version]=${{ github.event.inputs.docker_version }}"
+            -f "ref=${{ github.ref_name }}" -f "inputs[release_version]=${DOCKER_VERSION}" -f "inputs[source_version]=${VERSION}.${{ github.event.inputs.docker_version }}"
 
           until [ -n "${DOCKER_RUN_ID}" ]; do
             DOCKER_RUN_ID=$(gh api repos/${{ github.repository }}-buildtools/actions/runs \
@@ -78,28 +95,34 @@ jobs:
     if: ${{ github.event.inputs.trigger_packages_release == 'true' }}
     name: Trigger Packages release
     runs-on: ubuntu-latest
+    needs: extract-version
     outputs:
       deb_build_number: ${{ steps.package_release.outputs.deb_build_number }}
       rpm_build_number: ${{ steps.package_release.outputs.rpm_build_number }}
       exe_build_number: ${{ steps.package_release.outputs.exe_build_number }}
+    env:
+      JENKINS_URL: ${{ secrets.JENKINS_URL }}
+      JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
+      VERSION: ${{ needs.extract-version.outputs.version }}
     steps:
       - name: Trigger Packages release
         id: package_release
         run: |
-          JENKINS_URL="${{ secrets.JENKINS_URL }}"; TOKEN="${{ secrets.JENKINS_TOKEN }}"; VERSION="${{ github.event.inputs.version }}"
-          declare -A NUM
-          IFS='/' read -r NUM[deb] NUM[rpm] NUM[exe] <<< "${{ github.event.inputs.package_build_numbers }}"
+          declare -A NUM; IFS='/' read -r NUM[deb] NUM[rpm] NUM[exe] <<< "${{ github.event.inputs.package_build_numbers }}"
 
           for TYPE in deb rpm exe; do
             BUILD_NUM=${NUM[${TYPE}]}
             PUBLISH_JOB=$([ "$TYPE" = "exe" ] && echo "production.docspace.${TYPE}.publish" || echo "production.${TYPE}.publish")
 
-            curl -s -S -X POST -H "Content-Length: 0" -u "${TOKEN}" "${JENKINS_URL}/job/appserver.${TYPE}/${BUILD_NUM}/toggleLogKeep" -o /dev/null
-            curl -s -S -X POST -u "${TOKEN}" -d "description=${VERSION}.${BUILD_NUM}" "${JENKINS_URL}/job/appserver.${TYPE}/${BUILD_NUM}/submitDescription" -o /dev/null
-            ENDPOINT=$([ "$TYPE" = "exe" ] && echo "build" || echo "buildWithParameters")
-            curl -s -S -X POST -H "Content-Length: 0" -u "${TOKEN}" "${JENKINS_URL}/job/${PUBLISH_JOB}/${ENDPOINT}" -o /dev/null
+            curl -s -S -X POST -H "Content-Length: 0" -u "${JENKINS_TOKEN}" "${JENKINS_URL}/job/appserver.${TYPE}/${BUILD_NUM}/toggleLogKeep" -o /dev/null
+            [[ $(jq -r '.keepLog' <<< "$(curl -s -u "${JENKINS_TOKEN}" "${JENKINS_URL}/job/appserver.${TYPE}/${BUILD_NUM}/api/json")") == true ]] || echo "::error:: [${TYPE}] LogKeep not applied"
+            curl -s -S -X POST -u "${JENKINS_TOKEN}" -d "description=${VERSION}.${BUILD_NUM}" "${JENKINS_URL}/job/appserver.${TYPE}/${BUILD_NUM}/submitDescription" -o /dev/null
+            [[ $(jq -r '.description' <<< "$(curl -s -u "${JENKINS_TOKEN}" "${JENKINS_URL}/job/appserver.${TYPE}/${BUILD_NUM}/api/json")") != "" ]] || echo "::error:: [${TYPE}] Description not set"
+
+            curl -s -S -X POST -H "Content-Length: 0" -u "${JENKINS_TOKEN}" "${JENKINS_URL}/job/${PUBLISH_JOB}/$([ "${TYPE}" = "exe" ] && echo "build" || echo "buildWithParameters")" -o /dev/null
             sleep 10
-            echo "${TYPE}_build_number=$(curl -s -S -L -u "${TOKEN}" "${JENKINS_URL}/job/${PUBLISH_JOB}/lastBuild/api/json" | jq '.number')" >> "$GITHUB_OUTPUT"
+            [[ $(jq -r '.building' <<< "$(curl -s -u "${JENKINS_TOKEN}" "${JENKINS_URL}/job/${PUBLISH_JOB}/lastBuild/api/json")") == true ]] && echo "[${TYPE}] Build started" || echo "::error:: [${TYPE}] Build not started"
+            echo "${TYPE}_build_number=$(curl -s -S -L -u "${JENKINS_TOKEN}" "${JENKINS_URL}/job/${PUBLISH_JOB}/lastBuild/api/json" | jq '.number')" >> "$GITHUB_OUTPUT"
           done
 
   create_and_merge_pr:
@@ -117,66 +140,92 @@ jobs:
 
       - name: Check branch existence
         run: |
-          if [ -z "$(git ls-remote --heads "https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}" "${{ github.event.inputs.branch }}")" ]; then
-            echo "::error::Branch '${{ github.event.inputs.branch }}' does not exist in repository ${{ matrix.repo }}" && exit 1
-          fi
+          check_branch(){
+            GIT_OUTPUT=$(git ls-remote --heads "https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}" "refs/heads/${1%\*}*")
+            [[ -z ${GIT_OUTPUT} ]] && { echo "::error::Branch '$1' does not exist in repository ${{ matrix.repo }}"; [[ $1 == changelog/* ]] && return 0 || exit 1; }
+            BRANCH_NAME=$(awk '{ sub("refs\/heads\/","",$2); print $2 }' <<<"$GIT_OUTPUT")
+            echo "Branch $BRANCH_NAME found"
+            [[ $1 == changelog/* ]] && echo "CHANGELOG_BRANCH=${BRANCH_NAME}" >> "$GITHUB_ENV"
+          }
+          check_branch "${{ github.event.inputs.target_branch }}"
+          check_branch "${{ github.event.inputs.branch }}"
+          [ "${{ github.event.inputs.develop }}" = "true" ] && check_branch develop
+          [ "${{ matrix.repo }}" = "DocSpace" ] && check_branch 'changelog/*'
 
       - name: Check commits difference
         run: |
           git clone https://${{ secrets.GITEA_TOKEN }}@${{ secrets.GITEA_HOST }}/${{ github.repository_owner }}/${{ matrix.repo }}
-          cd ${{ matrix.repo }}
-          git fetch --quiet --all
-          if git diff --quiet origin/${{ github.event.inputs.target_branch }} origin/${{ github.event.inputs.branch }}; then
-            echo "::warning::No changes between '${{ github.event.inputs.target_branch }}' and '${{ github.event.inputs.branch }}'. Skipping PR."
-            echo "SKIP_PR=true" >> $GITHUB_ENV
-          fi
+          cd ${{ matrix.repo }} && git fetch --quiet --all
+
+          check_commits_difference(){
+            BASE=$1; FLAG=$2; LABEL=${3:-$BASE}
+            git diff --quiet origin/"${BASE}" origin/${{ github.event.inputs.branch }} \
+              && echo "::warning::No changes between '${BASE}' and '${{ github.event.inputs.branch }}'. Skipping ${LABEL} PR." \
+              && echo "${FLAG}=true" >> $GITHUB_ENV
+          }
+
+          check_commits_difference "${{ github.event.inputs.target_branch }}" SKIP_PR
+          [[ "${{ github.event.inputs.develop }}" == "true" ]] && check_commits_difference develop SKIP_PR_DEVELOP
+          [ -n "${{ env.CHANGELOG_BRANCH }}" ] && check_commits_difference "${{ env.CHANGELOG_BRANCH }}" SKIP_PR_CHANGELOG
 
       - name: Create Pull Request
         if: ${{ env.SKIP_PR != 'true' }}
         run: |
-          PR_NUMBER=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-            --state open --fields index,head,base --output json \
-            | jq -r '.[] | select(.head=="${{ github.event.inputs.branch }}" and .base=="${{ github.event.inputs.target_branch }}") | .index')
+          BRANCHES=("${{ github.event.inputs.target_branch }}")
+          [[ "${{ github.event.inputs.develop }}" == "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
+          [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
+          for BRANCH in "${BRANCHES[@]}"; do
+            PR_NUMBER=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+              --state open --fields index,head,base --output json \
+              | jq -r '.[] | select(.head=="${{ github.event.inputs.branch }}" and .base=="${BRANCH}") | .index')
 
-          if [[ -n "$PR_NUMBER" ]]; then
-            echo "Pull request #$PR_NUMBER already exists in ${{ matrix.repo }}"
-          else
-            tea pr create --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-              --base ${{ github.event.inputs.target_branch }} --head ${{ github.event.inputs.branch }} \
-              -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" \
-              -d "Automatically created by Release Action"
-          fi
+            if [[ -n "$PR_NUMBER" ]]; then
+              echo "Pull request #$PR_NUMBER already exists in ${{ matrix.repo }}"
+            else
+              tea pr create --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+                --base ${BRANCH} --head ${{ github.event.inputs.branch }} \
+                -t "Merge ${{ github.event.inputs.branch }} into ${BRANCH}" \
+                -d "Automatically created by Release Action"
+            fi
+          done
 
       - name: Auto merge Pull Request
         if: ${{ env.SKIP_PR != 'true' }}
         run: |
-          PR_NUMBER=$(timeout 60 bash -c 'while :; do 
-            NUM=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-            --state open --fields index,head,base --output json \
-            | jq -r ".[] | select(.head==\"${{ github.event.inputs.branch }}\" and .base==\"${{ github.event.inputs.target_branch }}\") | .index")
-            [[ -n "$NUM" && "$NUM" != "UNKNOWN" ]] && echo $NUM; sleep 2; exit 0; 
-          done;')
+          BRANCHES=("${{ github.event.inputs.target_branch }}")
+          [[ "${{ github.event.inputs.develop }}" = "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
+          [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
+          for BRANCH in "${BRANCHES[@]}"; do
+            PR_NUMBER=$(timeout 60 bash -c 'while :; do 
+              NUM=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+              --state open --fields index,head,base --output json \
+              | jq -r ".[] | select(.head==\"${{ github.event.inputs.branch }}\" and .base==\"${BRANCH}\") | .index")
+              [[ -n "$NUM" && "$NUM" != "UNKNOWN" ]] && echo $NUM; sleep 2; exit 0; 
+            done;')
 
-          if [ -z "${PR_NUMBER}" ]; then
-            echo "::error::Failed to find open PR in ${{ matrix.repo }}" && exit 1
-          fi
+            if [ -z "${PR_NUMBER}" ]; then
+              echo "::error::Failed to find open PR in ${{ matrix.repo }}" && exit 1
+            fi
 
-          MERGEABLE_STATUS=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-            --state all --fields index,mergeable --output json | jq -r ".[] | select(.index==${PR_NUMBER}) | .mergeable")
+            MERGEABLE_STATUS=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+              --state all --fields index,mergeable --output json | jq -r ".[] | select(.index==${PR_NUMBER}) | .mergeable")
 
-          if [ "${MERGEABLE_STATUS}" = "true" ]; then
-            tea pr merge --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-              -t "Merge ${{ github.event.inputs.branch }} into ${{ github.event.inputs.target_branch }}" ${PR_NUMBER} \
-              || echo "::error::Failed to merge PR #$PR_NUMBER in ${{ matrix.repo }}"
-          else
-            echo "::warning::PR #$PR_NUMBER in ${{ matrix.repo }} is not mergeable or contains conflicts."
-          fi
+            if [ "${MERGEABLE_STATUS}" = "true" ]; then
+              tea pr merge --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
+                -t "Merge ${{ github.event.inputs.branch }} into ${BRANCH}" ${PR_NUMBER} \
+                || echo "::error::Failed to merge PR #$PR_NUMBER in ${{ matrix.repo }}"
+            else
+              echo "::warning::PR #$PR_NUMBER in ${{ matrix.repo }} is not mergeable or contains conflicts."
+            fi
+          done
 
   release:
     if: ${{ github.event.inputs.trigger_release == 'true' }}
     name: Release ${{ matrix.repo }}
     runs-on: ubuntu-latest
-    needs: create_and_merge_pr
+    needs: [create_and_merge_pr, extract-version]
+    env:
+      VERSION: ${{ needs.extract-version.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -193,22 +242,26 @@ jobs:
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
         run: |
           echo "Waiting for PR merges in all repositories..."
+          BRANCHES=("${{ github.event.inputs.target_branch }}")
+          [[ "${{ github.event.inputs.develop }}" == "true" ]] && BRANCHES+=("develop")
+          TOTAL=$(( $(set -- ${REPOS}; echo $#) * ${#BRANCHES[@]} ))
           while :; do
             MERGED=0
             for REPO in ${REPOS}; do
-              PR_JSON=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${REPO} \
-                --state all --fields head,base,state,url --output json \
-                | jq -c --arg head "${{ github.event.inputs.branch }}" --arg base "${{ github.event.inputs.target_branch }}" \
-                '[.[]|select(.head==$head and .base==$base)] | if length>0 then .[0] else {state: "not_found", url: ""} end')
-              PR_STATE=$(echo "${PR_JSON}" | jq -r '.state') 
+              for BRANCH in "${BRANCHES[@]}"; do
+                PR_JSON=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${REPO} \
+                  --state all --fields head,base,state,url --output json \
+                  | jq -c --arg head "${{ github.event.inputs.branch }}" --arg base "${BRANCH}" \
+                  '[.[]|select(.head==$head and .base==$base)] | if length>0 then .[0] else {state: "not_found", url: ""} end')
+                PR_STATE=$(echo "${PR_JSON}" | jq -r '.state') 
 
-              echo "PR state for $REPO: ${PR_STATE}"
-
-             [[ "${PR_STATE}" == merged || "${PR_STATE}" == closed ]] && MERGED=$((MERGED + 1))
-              [ "${PR_STATE}" = "not_found" ] && REPOS=$(xargs -n1 <<< "$REPOS" | grep -vx "$REPO" | xargs)
+                echo "[${REPO}:${BRANCH}] PR status: ${PR_STATE}"
+                [[ "${PR_STATE}" == merged || "${PR_STATE}" == closed ]] && MERGED=$((MERGED + 1))
+                [ "${PR_STATE}" = "not_found" ] && TOTAL=$(( TOTAL - 1 ));
+              done
             done
             printf '%.0s-' {1..48}; echo
-            [ "${MERGED}" -eq "$(echo ${REPOS} | wc -w)" ] && break
+            [ "${MERGED}" -eq "${TOTAL}" ] && break || echo "${MERGED}/${TOTAL} PR(s) merged. Waiting for the rest..."
             sleep 5
           done
 
@@ -235,7 +288,7 @@ jobs:
       - name: Create Tag
         working-directory: ${{ matrix.repo }}
         run: |
-          TAG_NAME=${{ github.event.inputs.version }}$([ "${{ matrix.repo }}" != "DocSpace" ] && echo '-server' || echo '')
+          TAG_NAME=${{ env.VERSION }}$([ "${{ matrix.repo }}" != "DocSpace" ] && echo '-server' || echo '')
           git fetch --tags
           if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
             echo "::warning::Tag ${TAG_NAME} already exists. Skipping tag creation."
@@ -251,8 +304,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GH_TOKEN }}
-          tag_name: ${{ github.event.inputs.version }}
-          name: ${{ github.event.inputs.version }}
+          tag_name: ${{ env.VERSION }}
+          name: ${{ env.VERSION }}
           body: See changes at [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md)
           draft: false
           prerelease: false
@@ -260,13 +313,14 @@ jobs:
   notify:
     name: Notify Release
     runs-on: ubuntu-latest
-    needs: [release, trigger_docker_release, trigger_packages_release ]
+    needs: [release, extract-version, trigger_docker_release, trigger_packages_release ]
     if: ${{ github.event.inputs.trigger_notify == 'true' }}
     env:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}
     steps:
       - name: Notify Release
         env:
+          VERSION: ${{ needs.extract-version.outputs.version }}
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
           DOCKER_RUN_ID: ${{ needs.trigger_docker_release.outputs.docker_run_id }}
           DEB_BUILD_NUMBER: ${{ needs.trigger_packages_release.outputs.deb_build_number }}
@@ -304,6 +358,30 @@ jobs:
           if "${{ github.event.inputs.trigger_release }}" = "true" && ${{ github.event.inputs.trigger_docker_release == 'true' }} && ${{ github.event.inputs.trigger_packages_release == 'true' }}; then
             RELEASE_NOTIFICATION_CHAT_RESPONSE=$(curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
               -d chat_id=${{ secrets.TELEGRAM_RELEASE_NOTIFICATION_CHAT_ID }} -d parse_mode=Markdown \
-              -d "text=ONLYOFFICE DocSpace [${{ github.event.inputs.version }}](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md) for Docker, Linux and Windows has been released")
+              -d "text=ONLYOFFICE DocSpace [${{ env.VERSION }}](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md) for Docker, Linux and Windows has been released")
             echo "${RELEASE_NOTIFICATION_CHAT_RESPONSE}" | jq -e '.ok' > /dev/null || { echo "::error:: Error sending to RELEASE NOTIFICATION CHAT - $(echo "${RELEASE_NOTIFICATION_CHAT_RESPONSE}" | jq -r '.description')" >&2; exit 1; }
+          fi
+
+  delete-branch:
+    name: Delete release branch
+    needs: [trigger_docker_release, trigger_packages_release, release, notify]
+    if: ${{ success() }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: [ "DocSpace", "DocSpace-buildtools", "DocSpace-client", "DocSpace-server" ]
+    steps:
+      - name: Delete release branch
+        env:
+          BRANCH: ${{ github.event.inputs.branch }}
+        run: |
+          GITEA_API_URL="https://${{ secrets.GITEA_HOST }}/api/v1/repos/${{ github.repository_owner }}/${{ matrix.repo }}/branches/${BRANCH//\//%2F}"
+          if curl -sf -H "Authorization: token ${{ secrets.GITEA_TOKEN }}" "${GITEA_API_URL}"; then
+            if curl -sf -X DELETE -H "Authorization: token ${{ secrets.GITEA_TOKEN }}" "${GITEA_API_URL}"; then
+              echo "Branch '${BRANCH}' successfully deleted in ${{ matrix.repo }}."
+            else
+              echo "Error deleting branch in ${{ matrix.repo }}: HTTP status $(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H \"Authorization: token ${{ secrets.GITEA_TOKEN }}\" \"${GITEA_API_URL}\")" >&2 && exit 1
+            fi
+          else
+            echo "::warning:: Branch '${BRANCH}' not found in ${{ matrix.repo }}." >&2 && exit 1
           fi

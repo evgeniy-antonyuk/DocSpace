@@ -147,8 +147,8 @@ jobs:
             echo "Branch $BRANCH_NAME found"
             [[ $1 == changelog/* ]] && echo "CHANGELOG_BRANCH=${BRANCH_NAME}" >> "$GITHUB_ENV" || true
           }
-          check_branch "${{ github.event.inputs.branch }}" || exit 1
           check_branch "${{ github.event.inputs.target_branch }}" || exit 1
+          check_branch "${{ github.event.inputs.branch }}" || exit 1
           [ "${{ github.event.inputs.develop }}" = "true" ] && { check_branch develop || exit 1; } || true
           [ "${{ matrix.repo }}" = "DocSpace" ] && check_branch 'changelog/*' || true
 
@@ -159,35 +159,35 @@ jobs:
 
           check_commits_difference(){
             BASE=$1; FLAG=$2; LABEL=${3:-$BASE}
-            if git diff --quiet origin/"${BASE}" origin/${{ github.event.inputs.target_branch }}; then
-              echo "::warning::No changes between '${BASE}' and '${{ github.event.inputs.target_branch }}'. Skipping ${LABEL} PR."
+            if git diff --quiet origin/"${BASE}" origin/${{ github.event.inputs.branch }}; then
+              echo "::warning::No changes between '${BASE}' and '${{ github.event.inputs.branch }}'. Skipping ${LABEL} PR."
               echo "${FLAG}=true" >> $GITHUB_ENV
             fi
           }
 
-          check_commits_difference "${{ github.event.inputs.branch }}" SKIP_PR
+          check_commits_difference "${{ github.event.inputs.target_branch }}" SKIP_PR
           [[ "${{ github.event.inputs.develop }}" == "true" ]] && check_commits_difference develop SKIP_PR_DEVELOP
           [ -n "${{ env.CHANGELOG_BRANCH }}" ] && check_commits_difference "${{ env.CHANGELOG_BRANCH }}" SKIP_PR_CHANGELOG || true
 
       - name: Create Pull Request
         if: ${{ env.SKIP_PR != 'true' || env.SKIP_PR_DEVELOP != 'true' || env.SKIP_PR_CHANGELOG != 'true' }}
         run: |
-          [[ "${{ env.SKIP_PR }}" != "true" ]] && BRANCHES=("${{ github.event.inputs.branch }}")
+          [[ "${{ env.SKIP_PR }}" != "true" ]] && BRANCHES=("${{ github.event.inputs.target_branch }}")
           [[ "${{ github.event.inputs.develop }}" == "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
           [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
           for BRANCH in "${BRANCHES[@]}"; do
             PR_NUMBER=$(tea pr list --login "${{ secrets.GITEA_HOST }}" \
               --repo "${{ github.repository_owner }}/${{ matrix.repo }}" \
               --state open --fields index,head,base --output json \
-              | jq -r --arg H "$BRANCH" --arg B "${{ github.event.inputs.target_branch }}" \
+              | jq -r --arg H "${{ github.event.inputs.branch }}" --arg B "$BRANCH" \
                 '.[] | select(.head == $H and .base == $B) | .index')
 
             if [[ -n "$PR_NUMBER" ]]; then
               echo "Pull request #$PR_NUMBER already exists in ${{ matrix.repo }}"
             else
               tea pr create --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-                --base ${{ github.event.inputs.target_branch }} --head ${BRANCH} \
-                -t "Merge ${BRANCH} into ${{ github.event.inputs.target_branch }}" \
+                --base ${BRANCH} --head ${{ github.event.inputs.branch }} \
+                -t "Merge ${{ github.event.inputs.branch }} into ${BRANCH}" \
                 -d "Automatically created by Release Action"
             fi
           done
@@ -195,7 +195,7 @@ jobs:
       - name: Auto merge Pull Request
         if: ${{ env.SKIP_PR != 'true' || env.SKIP_PR_DEVELOP != 'true' || env.SKIP_PR_CHANGELOG != 'true' }}
         run: |
-          [[ "${{ env.SKIP_PR }}" != "true" ]] && BRANCHES=("${{ github.event.inputs.branch }}")
+          [[ "${{ env.SKIP_PR }}" != "true" ]] && BRANCHES=("${{ github.event.inputs.target_branch }}")
           [[ "${{ github.event.inputs.develop }}" = "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
           [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
           for BRANCH in "${BRANCHES[@]}"; do
@@ -204,7 +204,7 @@ jobs:
                 NUM=\$(tea pr list --login \"${{ secrets.GITEA_HOST }}\" \
                   --repo \"${{ github.repository_owner }}/${{ matrix.repo }}\" \
                   --state open --fields index,head,base --output json \
-                  | jq -r --arg H \"${BRANCH}\" --arg B \"${{ github.event.inputs.target_branch }}\" \
+                  | jq -r --arg H \"${{ github.event.inputs.branch }}\" --arg B \"${BRANCH}\" \
                     '.[] | select(.head == \$H and .base == \$B) | .index')
                 [[ -n \$NUM && \$NUM != UNKNOWN ]] && { echo \$NUM; exit; }
                 sleep 2
@@ -220,7 +220,7 @@ jobs:
 
             if [ "${MERGEABLE_STATUS}" = "true" ]; then
               tea pr merge --repo ${{ github.repository_owner }}/${{ matrix.repo }} \
-                -t "Merge ${BRANCH} into ${{ github.event.inputs.target_branch }}" ${PR_NUMBER} \
+                -t "Merge ${{ github.event.inputs.branch }} into ${BRANCH}" ${PR_NUMBER} \
                 || echo "::error::Failed to merge PR #$PR_NUMBER in ${{ matrix.repo }}"
             else
               echo "::warning::PR #$PR_NUMBER in ${{ matrix.repo }} is not mergeable or contains conflicts."
@@ -260,7 +260,7 @@ jobs:
               for BRANCH in "${BRANCHES[@]}"; do
                 PR_JSON=$(tea pr list --login ${{ secrets.GITEA_HOST }} --repo ${{ github.repository_owner }}/${REPO} \
                   --state all --fields head,base,state,url --output json \
-                  | jq -c --arg head "${BRANCH}" --arg base "${{ github.event.inputs.target_branch }}" \
+                  | jq -c --arg head "${{ github.event.inputs.branch }}" --arg base "${BRANCH}" \
                   '[.[]|select(.head==$head and .base==$base)] | if length>0 then .[0] else {state: "not_found", url: ""} end')
                 PR_STATE=$(echo "${PR_JSON}" | jq -r '.state') 
 

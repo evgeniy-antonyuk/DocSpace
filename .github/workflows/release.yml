@@ -6,26 +6,21 @@ on:
       branch:
         description: 'Release branch'
         required: true
-        default: 'release/v3.3.3'
+        default: 'release/vX.X.X'
       target_branch:
         description: 'Target branch'
         required: true
         default: 'master'
-      develop:
-        type: boolean
-        description: 'Merge release branch into develop'
-        required: true
-        default: true
       trigger_release:
         type: boolean
         description: 'GitHub Release'
         required: true
-        default: false
+        default: true
       trigger_docker_release:
         type: boolean
         description: 'Docker images release'
         required: true
-        default: false
+        default: true
       docker_version:
         description: 'Source Docker version'
         required: true
@@ -34,7 +29,7 @@ on:
         type: boolean
         description: 'Packages release'
         required: true
-        default: false
+        default: true
       package_build_numbers:
         description: 'deb/rpm/exe package build numbers (with /)'
         required: true
@@ -43,7 +38,12 @@ on:
         type: boolean
         description: 'Notify'
         required: true
-        default: false
+        default: true
+      delete_branch:
+        type: boolean
+        description: 'Delete release branch'
+        required: true
+        default: true
 
 jobs:
   extract-version:
@@ -151,7 +151,7 @@ jobs:
 
           check_branch "${{ github.event.inputs.target_branch }}" || exit 1
           check_branch "${{ github.event.inputs.branch }}" || exit 1
-          [ "${{ github.event.inputs.develop }}" = "true" ] && { check_branch develop || exit 1; } || true
+          check_branch develop || exit 1
           [ "${{ matrix.repo }}" = "DocSpace" ] && check_branch 'changelog/*' || true
 
       - name: Check commits difference
@@ -169,9 +169,7 @@ jobs:
           }
 
           check_commits_difference "${{ github.event.inputs.branch }}" "${{ github.event.inputs.target_branch }}" "SKIP_PR"
-          if [[ "${{ github.event.inputs.develop }}" == "true" ]]; then
-            check_commits_difference "${{ github.event.inputs.branch }}" "develop" "SKIP_PR_DEVELOP"
-          fi
+          check_commits_difference "${{ github.event.inputs.branch }}" "develop" "SKIP_PR_DEVELOP"
           if [[ -n "${{ env.CHANGELOG_BRANCH }}" ]]; then
             check_commits_difference "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.target_branch }}" "SKIP_PR_CHANGELOG"
           fi
@@ -200,9 +198,7 @@ jobs:
           }
 
           [[ "${{ env.SKIP_PR }}" != "true" ]] && create_pr "${{ github.event.inputs.branch }}" "${{ github.event.inputs.target_branch }}"
-          if [[ "${{ github.event.inputs.develop }}" == "true"  && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]]; then
-            create_pr "${{ github.event.inputs.branch }}" develop
-          fi
+          [[ "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && create_pr "${{ github.event.inputs.branch }}" develop
           if [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]]; then
             create_pr "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.target_branch }}"
           fi
@@ -243,9 +239,7 @@ jobs:
           }
 
           [[ "${{ env.SKIP_PR }}" != "true" ]] && merge "${{ github.event.inputs.branch }}" "${{ github.event.inputs.target_branch }}"
-          if [[ "${{ github.event.inputs.develop }}" == "true"  && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]]; then
-            merge "${{ github.event.inputs.branch }}" develop
-          fi
+          [[ "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && merge "${{ github.event.inputs.branch }}" develop
           if [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]]; then
             merge "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.target_branch }}"
           fi
@@ -275,7 +269,7 @@ jobs:
           echo "Waiting for PR merges in all repositories..."
           BASE_BRANCHES=(
             $( [[ "${{ env.SKIP_PR }}" != "true" ]] && echo "${{ github.event.inputs.target_branch }}" )
-            $( [[ "${{ github.event.inputs.develop }}" == "true" ]] && echo "develop" )
+            $( [[ "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && echo "develop" )
           )
           while :; do
             MERGED=0
@@ -336,7 +330,7 @@ jobs:
         if: ${{ matrix.repo == 'DocSpace' }}
         uses: softprops/action-gh-release@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
           tag_name: ${{ env.VERSION }}
           name: ${{ env.VERSION }}
           body: See changes at [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/master/CHANGELOG.md)
@@ -397,8 +391,8 @@ jobs:
 
   delete-branch:
     name: Delete release branch
-    needs: release
-    if: ${{ success() }}
+    needs: [trigger_docker_release, trigger_packages_release, release, notify]
+    if: ${{ github.event.inputs.delete_branch == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:

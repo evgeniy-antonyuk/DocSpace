@@ -288,7 +288,7 @@ jobs:
                   '[.[]|select(.head==$head and .base==$base)] | if length>0 then .[0] else {state: "not_found", url: ""} end')
                 PR_STATE=$(echo "${PR_JSON}" | jq -r '.state') 
 
-                [[ "${PR_STATE}" == merged ]] && { MERGED=$((MERGED + 1)); echo "│  ├ ${BASE} ✅ ${PR_STATE}"; } || { echo "│  ├ ${BASE} ❌ ${PR_STATE}"; }
+                [[ "${PR_STATE}" == merged || "${PR_STATE}" == "closed" ]] && { MERGED=$((MERGED + 1)); echo "│  ├ ${BASE} ✅ ${PR_STATE}"; } || { echo "│  ├ ${BASE} ❌ ${PR_STATE}"; }
                 [ "${PR_STATE}" = "not_found" ] && TOTAL=$(( TOTAL - 1 ));
               done
             done

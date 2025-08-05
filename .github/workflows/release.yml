@@ -177,17 +177,11 @@ jobs:
           [[ "${{ github.event.inputs.develop }}" == "true" && "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && BRANCHES+=("develop")
           [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]] && BRANCHES+=("${{ env.CHANGELOG_BRANCH }}")
           for BRANCH in "${BRANCHES[@]}"; do
-            PR_NUMBER=$(timeout 60 bash -c '
-            while :; do
-              NUM=$(tea pr list --login "${{ secrets.GITEA_HOST }}" \
-                --repo "${{ github.repository_owner }}/${{ matrix.repo }}" \
-                --state open --fields index,head,base --output json \
-                | jq -r --arg H "${{ github.event.inputs.branch }}" --arg B "$BRANCH" \
-                  ".[] | select(.head==\$H and .base==\$B) | .index")
-              [[ -n $NUM && $NUM != "UNKNOWN" ]] && { echo $NUM; break; }
-              sleep 2
-            done
-            ')
+            PR_NUMBER=$(tea pr list --login "${{ secrets.GITEA_HOST }}" \
+              --repo "${{ github.repository_owner }}/${{ matrix.repo }}" \
+              --state open --fields index,head,base --output json \
+              | jq -r --arg H "${{ github.event.inputs.branch }}" --arg B "$BRANCH" \
+                ".[] | select(.head==\$H and .base==\$B) | .index"))
 
             if [[ -n "$PR_NUMBER" ]]; then
               echo "Pull request #$PR_NUMBER already exists in ${{ matrix.repo }}"

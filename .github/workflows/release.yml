@@ -236,7 +236,7 @@ jobs:
               | jq -r ".[] | select(.index==${PR_NUMBER}) | .mergeable")
 
             if [[ "$MERGEABLE" == "true" ]]; then
-              tea pr merge --repo "${REPO}" --merge-style "${MERGE_STYLE}" -t "Merge ${HEAD} into ${BASE}" "${PR_NUMBER}" \
+              tea pr merge --repo "${REPO}" --style "${MERGE_STYLE}" --title "Merge ${HEAD} into ${BASE}" "${PR_NUMBER}" \
                 || echo "::error:: Failed to merge PR #${PR_NUMBER} for ${HEAD} → ${BASE}"
             else
               echo "::warning:: PR #$PR_NUMBER is not mergeable or has conflicts."

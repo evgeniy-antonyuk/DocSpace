@@ -3,11 +3,6 @@ name: Release Action
 on:
   workflow_dispatch:
     inputs:
-      trigger_notify:
-        type: boolean
-        description: 'Notify'
-        required: true
-        default: true
       delete_branch:
         type: boolean
         description: 'Delete release branch'
@@ -40,6 +35,11 @@ on:
         description: 'deb/rpm/exe package build numbers'
         required: true
         default: 'DEB/RPM/EXE'
+      trigger_notify:
+        type: boolean
+        description: 'Notify'
+        required: true
+        default: true
 
 jobs:
   extract-version:

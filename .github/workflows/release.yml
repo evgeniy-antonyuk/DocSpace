@@ -6,7 +6,7 @@ on:
       target_branches:
         description: 'Target branches'
         required: true
-        default: 'master, develop'
+        default: 'master,develop'
       trigger_release:
         type: boolean
         description: 'GitHub Release'

@@ -3,15 +3,10 @@ name: Release Action
 on:
   workflow_dispatch:
     inputs:
-      delete_branch:
-        type: boolean
-        description: 'Delete release branch'
+      target_branches:
+        description: 'Target branches'
         required: true
-        default: true
-      target_branch:
-        description: 'Target branch'
-        required: true
-        default: 'master'
+        default: 'master,develop'
       trigger_release:
         type: boolean
         description: 'GitHub Release'
@@ -38,6 +33,11 @@ on:
       trigger_notify:
         type: boolean
         description: 'Notify'
+        required: true
+        default: true
+      delete_branch:
+        type: boolean
+        description: 'Delete release branch'
         required: true
         default: true
 
@@ -155,9 +155,10 @@ jobs:
             [[ ${1} == changelog/* ]] && echo "CHANGELOG_BRANCH=${BRANCH_NAME}" >> "$GITHUB_ENV" || true
           }
 
-          check_branch "${{ github.event.inputs.target_branch }}" || exit 1
-          check_branch "${{ github.ref_name }}" || exit 1
-          check_branch develop || exit 1
+          IFS=',' read -ra BRANCHES <<< "${{ github.event.inputs.target_branches }}"
+          for BRANCH in "${{ github.ref_name }}" "${BRANCHES[@]}"; do
+            check_branch "$BRANCH" || exit 1
+          done
           [ "${{ matrix.repo }}" = "DocSpace" ] && check_branch 'changelog/*' || true
 
       - name: Check commits difference
@@ -174,19 +175,23 @@ jobs:
             fi
           }
 
-          check_commits_difference "${{ github.ref_name }}" "${{ github.event.inputs.target_branch }}" "SKIP_PR"
-          check_commits_difference "${{ github.ref_name }}" "develop" "SKIP_PR_DEVELOP"
+          sanitize(){ sed -E 's/[^[:alnum:]_]+/_/g;s/^[0-9]/_&/;s/.*/\U&/'; }
+          IFS=',' read -ra BRANCHES <<< "${{ github.event.inputs.target_branches }}"
+          for BRANCH in "${BRANCHES[@]}"; do
+            check_commits_difference "${{ github.ref_name }}" "${BRANCH}" "SKIP_PR_$(sanitize <<<"$BRANCH")"
+          done
+
           if [[ -n "${{ env.CHANGELOG_BRANCH }}" ]]; then
-            check_commits_difference "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.target_branch }}" "SKIP_PR_CHANGELOG"
+            check_commits_difference "master" "${{ env.CHANGELOG_BRANCH }}" "SKIP_PR_$(sanitize <<<"${{ env.CHANGELOG_BRANCH }}")"
           fi
 
       - name: Create Pull Request
-        if: ${{ env.SKIP_PR != 'true' || env.SKIP_PR_DEVELOP != 'true' || env.SKIP_PR_CHANGELOG != 'true' }}
         run: |
           REPO="${{ github.repository_owner }}/${{ matrix.repo }}"
 
           create_pr() {
-            local HEAD="$1" BASE="$2"
+            local HEAD="$1" BASE="$2" FLAG="$3"
+            [[ "${!FLAG}" == "true" ]] && { echo "↷ Skip ${HEAD} → ${BASE} (${FLAG}=true)"; return; }
             echo ">>> Creating PR: head='${HEAD}' → base='${BASE}'"
 
             EXISTING=$(tea pr list --login "${{ secrets.GITEA_HOST }}" \
@@ -203,18 +208,24 @@ jobs:
             fi
           }
 
-          [[ "${{ env.SKIP_PR }}" != "true" ]] && create_pr "${{ github.ref_name }}" "${{ github.event.inputs.target_branch }}"
-          [[ "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && create_pr "${{ github.ref_name }}" develop
-          if [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]]; then
-            create_pr "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.target_branch }}"
+          sanitize(){ sed -E 's/[^[:alnum:]_]+/_/g;s/^[0-9]/_&/;s/.*/\U&/'; }
+          IFS=, read -ra BRANCHES <<< "${{ github.event.inputs.target_branches }}"
+          for BASE in "${BRANCHES[@]}"; do
+            create_pr "${{ github.ref_name }}" "$BASE" "SKIP_PR_$(sanitize <<<"$BASE")"
+          done
+
+          if [[ -n "${{ env.CHANGELOG_BRANCH }}" ]]; then
+            create_pr "${{ env.CHANGELOG_BRANCH }}" "master" "SKIP_PR_$(sanitize <<<"${{ env.CHANGELOG_BRANCH }}")"
           fi
 
       - name: Auto merge Pull Request
         if: ${{ env.SKIP_PR != 'true' || env.SKIP_PR_DEVELOP != 'true' || env.SKIP_PR_CHANGELOG != 'true' }}
         run: |
           REPO="${{ github.repository_owner }}/${{ matrix.repo }}"
+
           merge() {
-            HEAD="$1"; BASE="$2"; MERGE_STYLE="${3:-merge}"
+            HEAD="$1"; BASE="$2"; FLAG="$3"; MERGE_STYLE="${4:-merge}"
+            [[ "${!FLAG}" == "true" ]] && { echo "↷ Skip ${HEAD} → ${BASE} (${FLAG}=true)"; return; }
             echo ">>> Processing PR: head='$HEAD' → base='${BASE}' in ${REPO}"
             PR_NUMBER=$(timeout 60 bash -c "
               while :; do
@@ -236,17 +247,21 @@ jobs:
               | jq -r ".[] | select(.index==${PR_NUMBER}) | .mergeable")
 
             if [[ "$MERGEABLE" == "true" ]]; then
-              tea pr merge --repo "${REPO}" --merge-style "${MERGE_STYLE}" -t "Merge ${HEAD} into ${BASE}" "${PR_NUMBER}" \
+              tea pr merge --repo "${REPO}" --style "${MERGE_STYLE}" --title  "Merge ${HEAD} into ${BASE}" "${PR_NUMBER}" \
                 || echo "::error:: Failed to merge PR #${PR_NUMBER} for ${HEAD} → ${BASE}"
             else
               echo "::warning:: PR #$PR_NUMBER is not mergeable or has conflicts."
             fi
           }
 
-          [[ "${{ env.SKIP_PR }}" != "true" ]] && merge "${{ github.ref_name }}" "${{ github.event.inputs.target_branch }}"
-          [[ "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && merge "${{ github.ref_name }}" develop
-          if [[ -n "${{ env.CHANGELOG_BRANCH }}" && "${{ env.SKIP_PR_CHANGELOG }}" != "true" ]]; then
-            merge "${{ env.CHANGELOG_BRANCH }}" "${{ github.event.inputs.target_branch }}" "squash"
+          sanitize(){ sed -E 's/[^[:alnum:]_]+/_/g;s/^[0-9]/_&/;s/.*/\U&/'; }
+          IFS=, read -ra BRANCHES <<<"${{ github.event.inputs.target_branches }}"
+          for BASE in "${BRANCHES[@]}"; do
+            merge "${{ github.ref_name }}" "$BASE" "SKIP_PR_$(sanitize <<<"$BASE")"
+          done
+
+          if [[ -n "${{ env.CHANGELOG_BRANCH }}" ]]; then
+            merge "${{ env.CHANGELOG_BRANCH }}" "master" "SKIP_PR_$(sanitize <<<"${{ env.CHANGELOG_BRANCH }}")" "squash"
           fi
 
   release:
@@ -272,10 +287,15 @@ jobs:
           REPOS: "DocSpace DocSpace-client DocSpace-server DocSpace-buildtools"
         run: |
           echo "Waiting for PR merges in all repositories..."
-          BASE_BRANCHES=(
-            $( [[ "${{ env.SKIP_PR }}" != "true" ]] && echo "${{ github.event.inputs.target_branch }}" )
-            $( [[ "${{ env.SKIP_PR_DEVELOP }}" != "true" ]] && echo "develop" )
-          )
+
+          sanitize(){ sed -E 's/[^[:alnum:]_]+/_/g;s/^[0-9]/_&/;s/.*/\U&/'; }
+          IFS=, read -ra BRANCHES <<<"${{ github.event.inputs.target_branches }}"
+          for BASE in "${BRANCHES[@]}"; do
+            FLAG="SKIP_PR_$(sanitize <<<"$BASE")"
+            [[ "${!FLAG}" == "true" ]] && { echo "↷ Skip ${{ github.ref_name }} → ${BASE} (${FLAG}=true)"; continue; }
+            BASE_BRANCHES+=("${BASE}")
+          done
+          
           while :; do
             MERGED=0
             TOTAL=$(( $(set -- ${REPOS}; echo $#) * ${#BASE_BRANCHES[@]} ))
@@ -345,7 +365,7 @@ jobs:
   notify:
     name: Notify Release
     runs-on: ubuntu-latest
-    needs: [release, extract-version, trigger_docker_release, trigger_packages_release ]
+    needs: [ release, extract-version, trigger_docker_release, trigger_packages_release ]
     if: ${{ github.event.inputs.trigger_notify == 'true' }}
     env:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -396,7 +416,7 @@ jobs:
 
   delete-branch:
     name: Delete release branch
-    needs: [trigger_docker_release, trigger_packages_release, release, notify]
+    needs: [ release, notify ]
     if: ${{ github.event.inputs.delete_branch == 'true' }}
     runs-on: ubuntu-latest
     strategy:
